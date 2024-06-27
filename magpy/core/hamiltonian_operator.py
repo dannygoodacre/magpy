@@ -146,7 +146,7 @@ class HamiltonianOperator:
                 "Hamiltonian is not constant. A value of t is required.")
 
         out = 0
-        for coeff, ps in self.data.items():
+        for coeff, ps in self.unpack_data():
             try:
                 out += coeff(torch.tensor(t)) * ps(n).type(torch.complex128)
             except TypeError:
