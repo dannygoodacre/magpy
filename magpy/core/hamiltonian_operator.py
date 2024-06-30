@@ -2,6 +2,7 @@ from itertools import chain
 from copy import deepcopy
 from numbers import Number
 import torch
+from torch import complex128
 import magpy as mp
 from .._device import _DEVICE_CONTEXT
 
@@ -130,16 +131,16 @@ class HamiltonianOperator:
         return '{' + ', '.join((str(f) if isinstance(f, Number)
                                 else f.__name__) + ': ' + str(q) for f, q in self.data.items()) + '}'
 
-    def __call__(self, t=None, n=None):
-        if n is None:
+    def __call__(self, t=None, n_qubits=None):
+        if n_qubits is None:
             pauli_strings = chain.from_iterable(p if isinstance(p, list) else [p] for p in self.data.values())
-            n = max(max(p.qubits) for p in pauli_strings)
+            n_qubits = max(max(p.qubits) for p in pauli_strings)
 
         if self.is_constant():
             try:
-                return sum(p(n).type(torch.complex128) for p in self.data[1])
+                return sum(p(n_qubits).type(complex128) for p in self.data[1])
             except TypeError:
-                return self.data[1](n).type(torch.complex128)
+                return self.data[1](n_qubits).type(complex128)
 
         if t is None:
             raise ValueError(
@@ -148,15 +149,26 @@ class HamiltonianOperator:
         out = 0
         for coeff, ps in self.unpack_data():
             try:
-                out += coeff(torch.tensor(t)) * ps(n).type(torch.complex128)
+                coeff_val = coeff(torch.tensor(t))
+
+                if coeff_val.dim() == 0:
+                    # Scalar function.
+                    out += coeff_val * ps(n_qubits).type(complex128)
+                else:
+                    # Vector function.
+                    out += coeff_val.reshape(-1, 1, 1) * ps(n_qubits).expand(len(coeff_val), -1, -1).type(complex128)
+
             except TypeError:
                 if isinstance(coeff, Number):
-                    out += coeff * ps(n).type(torch.complex128)
+                    out += torch.tensor(coeff) * ps(n_qubits).type(complex128)
+                elif isinstance(coeff, torch.Tensor):
+                    out += coeff.reshape(-1, 1, 1) * ps(n_qubits).type(complex128)
                 else:
                     for p in ps:
-                        out += coeff(torch.tensor(t)) * p(n).type(torch.complex128)
+                        # Coefficient function with multiple pauli operators.
+                        out += coeff_val.reshape(-1, 1, 1) * p(n_qubits).expand(len(coeff_val), -1, -1).type(complex128)
 
-        return out.to(_DEVICE_CONTEXT.device)
+        return out.to(_DEVICE_CONTEXT.device).squeeze()
 
     def is_constant(self):
         "Return true if the Hamiltonian is time-independent."
