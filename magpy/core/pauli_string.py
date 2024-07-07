@@ -70,49 +70,26 @@ class PauliString:
         return self.qubits == other.qubits and self.scale == other.scale
 
     def __mul__(self, other):
-        if isinstance(other, mp.HamiltonianOperator):
-            return -other * self
+        if isinstance(other, mp.PauliString):
+            return self.__mul_ps(other)
 
-        s = PauliString(scale=0)
+        if isinstance(other, mp.HamiltonianOperator):
+            return self.__mul_hop(other)
+
+        if isinstance(other, Number):
+            return self.__mul_num(other)
 
         try:
-            if other.scale == 0:
-                return s
-
-            s.qubits = self.qubits | other.qubits
+            # other is FunctionProduct.
+            self *= other.scale
+            other.scale = 1
         except AttributeError:
-            if isinstance(other, Number):
-                if other == 0:
-                    return s
+            # other is another type of function
+            pass
 
-                s.scale = self.scale * other
-                s.qubits = self.qubits
-            else:
-                try:
-                    # other is FunctionProduct.
-                    self *= other.scale
-                    other.scale = 1
-                except AttributeError:
-                    # other is other type of function.
-                    pass
+        return mp.HamiltonianOperator([other, self])
 
-                return mp.HamiltonianOperator([other, self])
-
-        else:
-            # other is PauliString.
-            s.scale = self.scale * other.scale
-
-            for n in list(set(self.qubits.keys() & other.qubits.keys())):
-                if self.qubits[n] == other.qubits[n]:
-                    del s.qubits[n]
-                else:
-                    scale, spin = PauliString.__pauli_mul(self.qubits[n], other.qubits[n])
-                    s.scale *= 1j * scale
-                    s.qubits[n] = spin
-
-        return s
-
-    __rmul__ = __mul__
+    __rmul__ = __mul__ # This may have to be changed
 
     def __add__(self, other):
         try:
@@ -157,6 +134,38 @@ class PauliString:
             qubits[index - 1] = PauliString.matrices[qubit]
 
         return self.scale * mp.kron(*qubits).type(torch.complex128).to(_DEVICE_CONTEXT.device)
+
+    def __mul_ps(self, other):
+        # Right multiply by PauliString
+        out = PauliString()
+        out.scale = self.scale * other.scale
+        out.qubits = self.qubits | other.qubits
+
+        for n in list(set(self.qubits.keys() & other.qubits.keys())):
+            if self.qubits[n] == other.qubits[n]:
+                del out.qubits[n]
+            else:
+                scale, spin = PauliString.__pauli_mul(self.qubits[n], other.qubits[n])
+                out.scale *= 1j * scale
+                out.qubits[n] = spin
+
+        return out
+
+    def __mul_hop(self, other):
+        # Right multiply by Hamiltonian
+        out = mp.HamiltonianOperator()
+
+        for coeff, p in other.unpack_data():
+            out += self.scale * coeff * self * p
+
+        return out
+
+    def __mul_num(self, other):
+        out = PauliString()
+        out.qubits = self.qubits
+        out.scale *= other
+
+        return out
 
     @staticmethod
     def collect(arr):
