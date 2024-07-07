@@ -136,7 +136,17 @@ class PauliString:
         return self + -1*other
 
     def __repr__(self):
-        return str(self.scale) + "*" + "*".join(q[1] + str(q[0]) for q in sorted(self.qubits.items()))
+        out = ""
+
+        if self.scale != 1:
+            out += str(self.scale) + "*"
+
+        if self.qubits.items():
+            out += "*".join(q[1] + str(q[0]) for q in sorted(self.qubits.items()))
+        else:
+            out += "Id"
+
+        return out
 
     def __call__(self, n=None):
         if n is None:
