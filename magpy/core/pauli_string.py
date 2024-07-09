@@ -93,15 +93,19 @@ class PauliString:
 
     def __add__(self, other):
         try:
-            if self == other:
-                s = PauliString(scale=self.scale + other.scale)
-                s.qubits = self.qubits
-                return s
-            if self == -other:
-                return 0*PauliString.Id()
-            return mp.HamiltonianOperator([1, self], [1, other])
+            if self.qubits == other.qubits:
+                scale = self.scale + other.scale
+                if scale == 0:
+                    return 0
+
+                out = PauliString(scale=scale)
+                out.qubits = self.qubits
+                return out
+
+            return mp.HamiltonianOperator([self.scale, self], [other.scale, other])
+
         except AttributeError:
-            # other is HamiltonianOperator
+            # other is HOp
             return other + self
 
     def __neg__(self):
@@ -110,7 +114,7 @@ class PauliString:
         return s
 
     def __sub__(self, other):
-        return self + -1*other
+        return self + -other
 
     def __repr__(self):
         out = ""

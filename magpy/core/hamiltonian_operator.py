@@ -92,7 +92,7 @@ class HamiltonianOperator:
             out.data = self.data | other.data
         except AttributeError:
             # other is PauliString; add it to constants.
-            out.data = self.data.copy()
+            out.data = deepcopy(self.data)
 
             try:
                 out.data[1].append(other)
