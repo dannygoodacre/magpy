@@ -1,4 +1,5 @@
 from numbers import Number
+from copy import deepcopy
 import torch
 import magpy as mp
 from .._device import _DEVICE_CONTEXT
@@ -102,7 +103,7 @@ class PauliString:
                 out.qubits = self.qubits
                 return out
 
-            return mp.HamiltonianOperator([self.scale, self], [other.scale, other])
+            return mp.HamiltonianOperator([1, self], [1, other])
 
         except AttributeError:
             # other is HOp
@@ -157,16 +158,11 @@ class PauliString:
 
     def __mul_hop(self, other):
         # Right multiply by Hamiltonian
-        out = mp.HamiltonianOperator()
-
-        for coeff, p in other.unpack_data():
-            out += self.scale * coeff * self * p
-
-        return out
+        return mp.HamiltonianOperator([1, self]) * other
 
     def __mul_num(self, other):
-        out = PauliString()
-        out.qubits = self.qubits
+        # Multiply by scalar
+        out = deepcopy(self)
         out.scale *= other
 
         return out

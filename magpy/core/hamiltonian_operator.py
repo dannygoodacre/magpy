@@ -56,14 +56,7 @@ class HamiltonianOperator:
         out = HamiltonianOperator()
 
         try:
-            self_data = HamiltonianOperator.__expand(self.data)
-            other_data = HamiltonianOperator.__expand(other.data)
-
-            for p in self_data:
-                for q in other_data:
-                    out += mp.FunctionProduct() * p[0] * q[0] * p[1] * q[1]
-
-            return out
+            return sum((p[0]*p[1]*q[0]*q[1] for q in other.unpack_data() for p in self.unpack_data()), out)
 
         except AttributeError:
             out.data = deepcopy(self.data)
