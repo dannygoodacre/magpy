@@ -41,7 +41,7 @@ class FunctionProduct:
                     self.scale *= f
                 except TypeError:
                     # Other type of function.
-                    self.funcs = self.__add_func(f)
+                    self.funcs = FunctionProduct.__add_func(self, f)
 
     def __eq__(self, other):
         return self.funcs == other.funcs and self.scale == other.scale
@@ -61,7 +61,7 @@ class FunctionProduct:
                 out.scale *= other.scale
                 out.funcs = self.__merge_funcs(other.funcs)
             except AttributeError:
-                out.funcs = out.__add_func(other)
+                out.funcs = FunctionProduct.__add_func(out, other)
 
         return out
 
@@ -94,10 +94,11 @@ class FunctionProduct:
         # Combine funcs dict with own funcs dict, summing values with shared keys.
         return {f: self.funcs.get(f, 0) + funcs.get(f, 0) for f in set(self.funcs) | set(funcs)}
 
-    def __add_func(self, f):
-        # Add function to own funcs dict, adding new key or incremented existing value accordingly.
+    @staticmethod
+    def __add_func(out, f):
+        # Add function to funcs dict, adding new key or incrementing existing value accordingly.
         try:
-            self.funcs[f] += 1
+            out.funcs[f] += 1
         except KeyError:
-            self.funcs[f] = 1
-        return self.funcs
+            out.funcs[f] = 1
+        return out.funcs
