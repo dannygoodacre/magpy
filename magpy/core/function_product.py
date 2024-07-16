@@ -29,7 +29,6 @@ class FunctionProduct:
 
         self.funcs = {}
         self.scale = 1
-        self.__name__ = "FP"
 
         for f in funcs:
             try:
@@ -77,6 +76,13 @@ class FunctionProduct:
             out *= f(arg)
 
         return out * self.scale
+
+    def __repr__(self):
+        return f"{str(self.scale)}*{str(self.funcs)}"
+
+    def __str__(self):
+        return (str(self.scale) + "*" if self.scale != 1 else "") \
+            + '*'.join([f.__name__ + (f"^{str(n)}" if n > 1 else "") for f, n in self.funcs.items()])
 
     def __hash__(self):
         return hash(tuple(self.funcs)) + hash(self.scale)
