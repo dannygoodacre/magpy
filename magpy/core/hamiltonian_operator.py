@@ -121,8 +121,31 @@ class HamiltonianOperator:
         return out
 
     def __repr__(self):
-        return '{' + ', '.join((str(f) if isinstance(f, Number)
-                                else f.__name__) + ': ' + str(q) for f, q in self.data.items()) + '}'
+        return str(self.data)
+
+    def __str__(self):
+        out = ""
+        for f, p in self.data.items():
+            try:
+                p_str = str(p)
+                scale_pos = p_str.find('*')
+
+                if p.scale != 1:
+                    out += p_str[:scale_pos] + '*'
+
+                out = HamiltonianOperator.__add_coeff_to_str(out, f)
+                out += p_str[scale_pos + 1:] if scale_pos > 0 else p_str
+
+            except AttributeError:
+                out = HamiltonianOperator.__add_coeff_to_str(out, f)
+
+                out += '(' if f != 1 else ""
+                out += " + ".join([str(q) for q in p])
+                out += ')' if f != 1 else ""
+
+            out += " + "
+
+        return out[:-3]
 
     def __call__(self, t=None, n_qubits=None):
         if n_qubits is None:
@@ -202,13 +225,14 @@ class HamiltonianOperator:
             arrs[coeff] = mp.PauliString.collect(arrs[coeff])
 
     @staticmethod
-    def __expand(data):
-        # Expand all functions and lists of qubits into pairs of functions with single qubits.
-        expanded_data = []
-        for pair in data.items():
+    def __add_coeff_to_str(out, f):
+        try:
+            out += f.__name__ + '*'
+        except AttributeError:
             try:
-                for qubit in pair[1]:
-                    expanded_data.append((pair[0], qubit))
-            except TypeError:
-                expanded_data.append(pair)
-        return expanded_data
+                if f != 1:
+                    out += str(f) + '*'
+            except (RuntimeError, AttributeError):
+                out += str(f) + '*'
+
+        return out
