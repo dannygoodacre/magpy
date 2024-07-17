@@ -1,4 +1,5 @@
 from numbers import Number
+import torch
 import magpy as mp
 
 
@@ -73,7 +74,10 @@ class FunctionProduct:
     def __call__(self, arg):
         out = 1
         for f in self.funcs:
-            out *= f(arg)
+            try:
+                out *= f(arg.clone().detach())
+            except AttributeError:
+                out *= f(torch.tensor(arg))
 
         return out * self.scale
 
@@ -87,8 +91,10 @@ class FunctionProduct:
     def __hash__(self):
         return hash(tuple(self.funcs)) + hash(self.scale)
 
-    def __repr__(self):
-        return str(self.scale) + "*" + str(self.funcs)
+    def is_empty(self):
+        """Return true if function product contains no functions.
+        """
+        return not self.funcs
 
     def __merge_funcs(self, funcs):
         # Combine funcs dict with own funcs dict, summing values with shared keys.
