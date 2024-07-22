@@ -46,7 +46,7 @@ class HamiltonianOperator:
             except AttributeError:
                 self.data[pair[0]] = [self.data[pair[0]], pair[1]]
 
-        HamiltonianOperator.__simplify(self.data)
+        self.data = HamiltonianOperator.__simplify_and_sort_data(self.data)
 
     def __eq__(self, other):
         return self.data == other.data
@@ -55,7 +55,7 @@ class HamiltonianOperator:
         out = HamiltonianOperator()
 
         try:
-            return sum((p[0]*p[1]*q[0]*q[1] for q in other.unpack_data() for p in self.unpack_data()), out)
+            out = sum((p[0]*p[1]*q[0]*q[1] for q in other.unpack_data() for p in self.unpack_data()), out)
 
         except AttributeError:
             out.data = deepcopy(self.data)
@@ -73,7 +73,8 @@ class HamiltonianOperator:
                 for coeff in list(out.data):
                     out.data[mp.FunctionProduct(coeff, other)] = out.data.pop(coeff)
 
-            return out
+        out.data = HamiltonianOperator.__simplify_and_sort_data(out.data)
+        return out
 
     __rmul__ = __mul__
 
@@ -107,7 +108,7 @@ class HamiltonianOperator:
                 except TypeError:
                     out.data[coeff].append(other.data[coeff])
 
-        HamiltonianOperator.__simplify(out.data)
+        out.data = HamiltonianOperator.__simplify_and_sort_data(out.data)
         return out
 
     def __neg__(self):
@@ -234,7 +235,7 @@ class HamiltonianOperator:
         return out.to(_DEVICE_CONTEXT.device).squeeze()
 
     @staticmethod
-    def __simplify(arrs):
+    def __simplify_data(arrs):
         # Collect all PauliStrings in all lists in arrs.
         for coeff in arrs:
             arrs[coeff] = mp.PauliString.collect(arrs[coeff])
@@ -251,3 +252,19 @@ class HamiltonianOperator:
                 out += str(f) + '*'
 
         return out
+
+    @staticmethod
+    def __sort_data(data):
+        # Move all constant keys to the start of the dictionary.
+        const_keys = []
+        other_keys = []
+
+        for key in data:
+            (const_keys if isinstance(key, Number | torch.Tensor) else other_keys).append(key)
+
+        return dict((key, data[key]) for key in const_keys + other_keys)
+
+    @staticmethod
+    def __simplify_and_sort_data(data):
+        HamiltonianOperator.__simplify_data(data)
+        return HamiltonianOperator.__sort_data(data)
