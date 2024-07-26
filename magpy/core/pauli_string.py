@@ -77,7 +77,7 @@ class PauliString:
         if isinstance(other, mp.HamiltonianOperator):
             return self.__mul_hop(other)
 
-        if isinstance(other, Number):
+        if isinstance(other, Number | torch.Tensor):
             return self.__mul_num(other)
 
         try:
@@ -96,7 +96,7 @@ class PauliString:
         try:
             if self.qubits == other.qubits:
                 scale = self.scale + other.scale
-                if scale == 0:
+                if torch.is_tensor(scale) and torch.all(scale.eq(0)) or isinstance(scale, Number) and scale == 0:
                     return 0
 
                 out = PauliString(scale=scale)
@@ -120,7 +120,7 @@ class PauliString:
     def __repr__(self):
         out = ""
 
-        if self.scale != 1:
+        if isinstance(self.scale, torch.Tensor) or self.scale != 1:
             out += str(self.scale) + "*"
 
         if self.qubits.items():
@@ -138,7 +138,8 @@ class PauliString:
         for index, qubit in self.qubits.items():
             qubits[index - 1] = PauliString.matrices[qubit]
 
-        return self.scale * mp.kron(*qubits).type(torch.complex128).to(_DEVICE_CONTEXT.device)
+        scale = self.scale.view(len(self.scale), 1, 1) if isinstance(self.scale, torch.Tensor) else self.scale
+        return scale * mp.kron(*qubits).type(torch.complex128).to(_DEVICE_CONTEXT.device)
 
     def __mul_ps(self, other):
         # Right multiply by PauliString
