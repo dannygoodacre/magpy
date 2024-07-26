@@ -1,4 +1,5 @@
 from numbers import Number
+from copy import deepcopy
 import torch
 import magpy as mp
 
@@ -52,10 +53,10 @@ class FunctionProduct:
             return other * self
 
         out = FunctionProduct()
-        out.funcs = self.funcs.copy()
-        out.scale = self.scale
+        out.funcs = deepcopy(self.funcs)
+        out.scale = deepcopy(self.scale)
 
-        if isinstance(other, Number):
+        if isinstance(other, Number | torch.Tensor):
             out.scale *= other
         else:
             try:
@@ -85,7 +86,7 @@ class FunctionProduct:
         return f"{str(self.scale)}*{str(self.funcs)}"
 
     def __str__(self):
-        return (str(self.scale) + "*" if self.scale != 1 else "") \
+        return (str(self.scale) + "*" if isinstance(self.scale, torch.Tensor) or self.scale != 1 else "") \
             + '*'.join([f.__name__ + (f"^{str(n)}" if n > 1 else "") for f, n in self.funcs.items()])
 
     def __hash__(self):
