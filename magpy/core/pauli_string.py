@@ -138,7 +138,7 @@ class PauliString:
         for index, qubit in self.qubits.items():
             qubits[index - 1] = PauliString.matrices[qubit]
 
-        scale = self.scale.view(len(self.scale), 1, 1) if isinstance(self.scale, torch.Tensor) else self.scale
+        scale = self.scale.view(len(self.scale), 1, 1).to(_DEVICE_CONTEXT.device) if isinstance(self.scale, torch.Tensor) else self.scale
         return scale * mp.kron(*qubits).type(torch.complex128).to(_DEVICE_CONTEXT.device)
 
     def __mul_ps(self, other):
