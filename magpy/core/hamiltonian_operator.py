@@ -129,7 +129,7 @@ class HamiltonianOperator:
                 p_str = str(p)
                 scale_pos = p_str.find('*')
 
-                if p.scale != 1:
+                if isinstance(p.scale, torch.Tensor) or p.scale != 1:
                     out += p_str[:scale_pos] + '*'
 
                 out = HamiltonianOperator.__add_coeff_to_str(out, f)
@@ -226,10 +226,9 @@ class HamiltonianOperator:
 
             # Evaluate coefficient if it's a function.
             try:
-                coeff = coeff(t)
+                coeff = coeff(t).to(_DEVICE_CONTEXT.device)
             except TypeError:
                 pass
-            coeff = coeff.to(_DEVICE_CONTEXT.device)
 
             # Evaluate next term in data.
             next_term = 0
