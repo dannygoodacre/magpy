@@ -1,7 +1,6 @@
 from copy import deepcopy
 from numbers import Number
 import torch
-from torch import complex128
 import magpy as mp
 from .._device import _DEVICE_CONTEXT
 
@@ -158,6 +157,12 @@ class HamiltonianOperator:
             raise ValueError(
                 "Hamiltonian is not constant. A value of t is required.")
 
+        # Convert input to tensor.
+        try:
+            t = t.clone().detach()
+        except AttributeError:
+            t = torch.tensor(t)
+
         return self.__call_time_dependent(t, n_qubits)
 
     def is_constant(self):
@@ -197,42 +202,52 @@ class HamiltonianOperator:
         return [u[1] for u in self.unpack_data()]
 
     def __call_time_independent(self, n_qubits):
-        # Return matrix representation when constant
+        # Return matrix representation when constant.
         out = 0
-        for coeff, p in self.unpack_data():
+        for p in self.pauli_operators():
             try:
-                out += coeff.reshape(-1, 1, 1) * p(n_qubits).expand(len(coeff), -1, -1)
+                p_val = p(n_qubits)
+
+                # If p is a batch, repeat the current value to agree with its shape.
+                if out.dim() == 2 and p_val.dim() == 3:
+                    out = out.repeat(len(p_val), 1, 1)
+
             except AttributeError:
-                out += coeff * p(n_qubits)
+                pass
+
+            out += p(n_qubits)
+
         return out
 
     def __call_time_dependent(self, t, n_qubits):
         out = 0
-        for coeff, ps in self.unpack_data():
+        for coeff, p in self.unpack_data():
+            p_val = p(n_qubits).to(_DEVICE_CONTEXT.device)
+
+            # Evaluate coefficient if it's a function.
             try:
-                try:
-                    coeff_val = coeff(t.clone().detach())
-                except AttributeError:
-                    coeff_val = coeff(torch.tensor(t))
-
-                if coeff_val.dim() == 0:
-                    # Scalar function.
-                    out += coeff_val * ps(n_qubits).type(complex128)
-                else:
-                    # Vector function.
-                    out += coeff_val.reshape(-1, 1, 1) * ps(n_qubits).expand(len(coeff_val), -1, -1).type(complex128)
-
+                coeff = coeff(t)
             except TypeError:
-                if isinstance(coeff, Number):
-                    out += torch.tensor(coeff) * ps(n_qubits).type(complex128)
-                elif isinstance(coeff, torch.Tensor):
-                    out += coeff.reshape(-1, 1, 1) * ps(n_qubits).type(complex128)
-                else:
-                    for p in ps:
-                        # Coefficient function with multiple pauli operators.
-                        out += coeff_val.reshape(-1, 1, 1) * p(n_qubits).expand(len(coeff_val), -1, -1).type(complex128)
+                pass
+            coeff = coeff.to(_DEVICE_CONTEXT.device)
 
-        return out.to(_DEVICE_CONTEXT.device).squeeze()
+            # Evaluate next term in data.
+            next_term = 0
+            try:
+                next_term = coeff.reshape(-1,1,1) * p_val
+            except AttributeError:
+                next_term = coeff * p_val
+
+            # If p is a batch, repeat the current value to agree with its shape.
+            try:
+                if out.dim() == 2 and next_term.dim() == 3:
+                    out = out.repeat(len(next_term), 1, 1)
+            except AttributeError:
+                pass
+
+            out += next_term
+
+        return out
 
     @staticmethod
     def __simplify_data(arrs):
