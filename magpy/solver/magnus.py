@@ -20,9 +20,9 @@ def batch_first_term(H, tlist, n_qubits):
     """The first term of the Magnus expansion, evaluated across each given
     time interval.
 
-    If `H` is an n-qubit Hamiltonian (shape = [2^n, 2^n]) and `tlist` contains 
-    m intervals (m+1 points in time), then this function returns a Tensor with
-    shape = [m, 2^n, 2^n].
+    If `H` is an k-batch, n-qubit Hamiltonian (matrix shape = [k, 2^n, 2^n]) 
+    and `tlist` contains m intervals (m+1 points in time), then this function 
+    returns a Tensor with shape = [m, k, 2^n, 2^n].
 
     Parameters
     ----------
@@ -36,24 +36,62 @@ def batch_first_term(H, tlist, n_qubits):
     Returns
     -------
     Tensor
-        Batch first term values
+        Batch first term
     """
 
+    out = []
+
+    for i in range(len(tlist) - 1):
+        out.append(__first_term(H, tlist[i:i+2], n_qubits))
+
+    return torch.stack(out).squeeze()
+
+def __first_term(H, tlist, n_qubits):
+    # The first term of the Magnus expansion of the Hamiltonian.
+    # NOTE: Currently, the tlist here is assumed to be two terms.
     from ._gl3_quadrature_constants import knots, weights_first_term
 
-    t0 = tlist[0]
-    n = len(tlist) - 1
     step = tlist[1] - tlist[0]
+    z = __quadrature_points(tlist, step, knots)
 
-    z = 0.5*step*knots.expand(n, -1, -1) + (t0 + step*(torch.arange(n).to(_DEVICE_CONTEXT.device) + 0.5)) \
-        .reshape((n, 1, 1)).expand(-1, -1, 3)
-    zw = tuple(torch.ones(z.shape).to(_DEVICE_CONTEXT.device)*weights_first_term if f == 1 
-               else f(z)*weights_first_term for f in H.funcs())
-    a = 0.5 * step * torch.sum(torch.cat(zw, 1), 2)
+    coeff_integrals, coeff_batch_size = __coefficient_integrals(H, step, z, weights_first_term)
+    pauli_operator_matrices = __operator_matrix_representation(H, n_qubits)
 
-    return torch.tensordot(a, torch.stack([p(n_qubits) for p in H.pauli_operators()]), 1)
+    # Dot product of coefficient integrals and evaluated Pauli operators.
+    return torch.sum(coeff_integrals * pauli_operator_matrices, -4).squeeze()
 
+def __quadrature_points(tlist, step, knots):
+    # GL3 quadrature points transformed onto given interval.
+    return tlist[0] + 0.5*step*knots + step*(torch.arange(len(tlist) - 1).to(_DEVICE_CONTEXT.device) + 0.5)
 
+def __coefficient_integrals(H, step, z, weights_first_term):
+    # Integral of each coefficient across given interval.
+
+    # Element-wise product of coefficients evaluated at quadrature points with GL3 weights.
+    zw = [torch.ones(z.shape).to(_DEVICE_CONTEXT.device)*weights_first_term if f == 1
+          else f(z)*weights_first_term for f in H.funcs()]
+    coeff_batch_size = max(len(x) if x.dim() > 1 else 1 for x in zw)
+
+    # Repeat each scalar coefficent to match the batch size of the others.
+    for i, x in enumerate(zw):
+        if x.dim() == 1:
+            zw[i] = x.repeat(coeff_batch_size, 1)
+
+    # Sum along each row in zw which corresponds to a scalar element in the coefficients.
+    return (0.5 * step * torch.sum(torch.stack(zw), 2)).unsqueeze(-1).unsqueeze(-1), coeff_batch_size
+
+def __operator_matrix_representation(H, n_qubits):
+    pauli_operator_matrices = [p(n_qubits) for p in H.pauli_operators()]
+    pauli_operator_batch_size = max(len(op) if op.dim() > 2 else 1 for op in pauli_operator_matrices)
+
+    # Repeat single pauli operators to match the batch size of the others.
+    for i, op in enumerate(pauli_operator_matrices):
+        if op.dim() == 2:
+            pauli_operator_matrices[i] = op.repeat(pauli_operator_batch_size, 1, 1)
+
+    return torch.stack(pauli_operator_matrices)
+
+# TODO: Upgrade this to match new batched nature of first term. This is now broken.
 def batch_second_term(H, tlist, n_qubits):
     """The second term of the Magnus expansion, evaluated across each given 
     time interval.
