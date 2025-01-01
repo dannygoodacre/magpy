@@ -1,9 +1,9 @@
 from .core import PauliString, X, Y, Z, Id, FunctionProduct, HamiltonianOperator, kron, frobenius, timegrid
-from .solver import System
+from .solver import evolve
 
 __all__ = [
     'PauliString', 'X', 'Y', 'Z', 'Id', 'FunctionProduct', 'HamiltonianOperator', 'kron', 'frobenius', 'timegrid',
-    'System'
+    'evolve'
 ]
 
 
