@@ -1,6 +1,5 @@
 import functools
 import torch
-from .._device import _DEVICE_CONTEXT
 
 def kron(*args):
     """Compute the Kronecker product of the input arguments.
@@ -11,11 +10,11 @@ def kron(*args):
         Resultant product
     """
 
-    return functools.reduce(torch.kron, args).to(_DEVICE_CONTEXT.device)
+    return functools.reduce(torch.kron, args)
 
 
 def frobenius(a, b):
-    """Compute the Frobenius inner product of `a` and `b`. 
+    """Compute the Frobenius inner product of `a` and `b`.
 
     If `a` is a 3D tensor and `b` is a 2D tensor, then the inner product is
     batched across `a`. Otherwise `a` and `b` must both be 2D tensors.
@@ -34,10 +33,9 @@ def frobenius(a, b):
     """
 
     try:
-        return torch.vmap(torch.trace)(torch.matmul(torch.conj(torch.transpose(a, 1, -1)), b)) \
-            .to(_DEVICE_CONTEXT.device)
+        return torch.vmap(torch.trace)(torch.matmul(torch.conj(torch.transpose(a, 1, -1)), b))
     except RuntimeError:
-        return torch.trace(torch.conj(torch.transpose(a, 0, 1)) @ b).to(_DEVICE_CONTEXT.device)
+        return torch.trace(torch.conj(torch.transpose(a, 0, 1)) @ b)
 
 
 def timegrid(start, stop, step):
@@ -59,4 +57,4 @@ def timegrid(start, stop, step):
         Grid of values
     """
 
-    return torch.arange(start, stop + step, step).to(_DEVICE_CONTEXT.device)
+    return torch.arange(start, stop + step, step)

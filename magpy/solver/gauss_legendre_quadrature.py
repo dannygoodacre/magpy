@@ -12,6 +12,7 @@ References
 
 import torch
 from math import sqrt
+from .._device import _DEVICE_CONTEXT
 
 _QUADRATURE_DEGREE = 3
 _KNOTS = torch.tensor([-sqrt(3/5), 0, sqrt(3/5)], dtype=torch.complex128)
@@ -22,6 +23,13 @@ _WEIGHTS_2 = torch.tensor([2, 1, 2]).unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
 _WEIGHTS_2_COEFFICIENT = sqrt(15) / 54
 
 _combinations = [(0, 1), (0, 2), (1, 2)]
+
+
+def _update_device():
+    global _KNOTS, _WEIGHTS_1, _WEIGHTS_2
+    _KNOTS = _KNOTS.to(_DEVICE_CONTEXT.device)
+    _WEIGHTS_1 = _WEIGHTS_1.to(_DEVICE_CONTEXT.device)
+    _WEIGHTS_2 = _WEIGHTS_2.to(_DEVICE_CONTEXT.device)
 
 
 def get_knots_over_interval(tlist: torch.Tensor, step: float) -> torch.Tensor:
@@ -67,7 +75,8 @@ def compute_integrals(funcs: list, knots: torch.Tensor, step: float) -> torch.Te
     Tensor
         Integrals of the given functions over the given intervals.
     """
-    weighted_functions = tuple(torch.ones(knots.shape) * _WEIGHTS_1 if f == 1 else f(knots) * _WEIGHTS_1 for f in funcs)
+    weighted_functions = tuple(torch.ones(knots.shape) * _WEIGHTS_1
+                               if f == 1 else f(knots) * _WEIGHTS_1 for f in funcs)
     return 0.5 * step * torch.sum(torch.stack(weighted_functions), 2)
 
 
