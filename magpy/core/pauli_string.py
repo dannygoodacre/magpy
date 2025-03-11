@@ -2,6 +2,7 @@ from numbers import Number
 from copy import deepcopy
 import torch
 import magpy as mp
+import qutip as qt
 from .._device import _DEVICE_CONTEXT
 
 
@@ -44,6 +45,13 @@ class PauliString:
         'X': torch.tensor([[0, 1], [1, 0]]),
         'Y': torch.tensor([[0, -1j], [1j, 0]]),
         'Z': torch.tensor([[1, 0], [0, -1]])
+    }
+
+    qutip_states = {
+        'X' : qt.sigmax(),
+        'Y' : qt.sigmay(),
+        'Z' : qt.sigmaz(),
+        'Id' : qt.qeye(2)
     }
 
     def __init__(self, x=None, y=None, z=None, scale=1):
@@ -168,6 +176,19 @@ class PauliString:
         out.scale *= other
 
         return out
+
+    @property
+    def n_qubits(self):
+        return max(self.qubits) if self.qubits else 1
+
+    def qutip(self, n=None):
+        """Convert to QuTiP form."""
+        if not self.qubits:
+            return qt.qeye(2 ** n)
+
+        n = (self.n_qubits if n is None else n) + 1
+
+        return self.scale * qt.tensor(self.qutip_states.get(self.qubits.get(i, 'Id')) for i in range(1, n))
 
     @staticmethod
     def collect(arr):

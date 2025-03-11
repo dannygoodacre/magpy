@@ -201,6 +201,19 @@ class HamiltonianOperator:
         """All Pauli operators in H."""
         return [u[1] for u in self.unpack_data()]
 
+    @property
+    def n_qubits(self):
+        """Number of qubits in operator."""
+        return max(p.n_qubits for p in self.pauli_operators())
+
+    def qutip(self):
+        """Convert to QuTiP form."""
+        if self.is_constant():
+            return self.__qutip_constant(self.unpack_data())
+
+        return [self.__qutip_constant(self.constant_components())] \
+                + [[c[1].qutip(self.n_qubits), c[0]] for c in self.time_dependent_components()]
+
     def __call_time_independent(self, n_qubits):
         # Return matrix representation when constant.
         out = 0
@@ -248,6 +261,12 @@ class HamiltonianOperator:
 
         return out
 
+    def constant_components(self):
+        return [state for state in self.unpack_data() if isinstance(state[0], Number | torch.Tensor)]
+
+    def time_dependent_components(self):
+        return [state for state in self.unpack_data() if state not in self.constant_components()]
+
     @staticmethod
     def __simplify_data(arrs):
         # Collect all PauliStrings in all lists in arrs.
@@ -282,3 +301,8 @@ class HamiltonianOperator:
     def __simplify_and_sort_data(data):
         HamiltonianOperator.__simplify_data(data)
         return HamiltonianOperator.__sort_data(data)
+
+    @staticmethod
+    def __qutip_constant(states):
+        n = max(max(states[i][1].qubits) for i in range(len(states)))
+        return sum(state[0] * state[1].qutip(n) for state in states)
