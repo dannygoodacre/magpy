@@ -1,48 +1,80 @@
+"""This file provivdes some useful matrix operations.
+
+References
+----------
+
+.. [1] Baldwin, A. J. and Jones, J. A., “Efficiently computing the Uhlmann 
+       fidelity for density matrices”, *Physical Review A*, vol. 107, 
+       no. 1, Art. no. 012427, 2023. doi:10.1103/PhysRevA.107.012427.
+
+"""
+
+
 import functools
 import torch
-from .._device import _DEVICE_CONTEXT
-
-def kron(*args):
-    """Compute the Kronecker product of the input arguments.
-
-    Returns
-    -------
-    Tensor
-        Resultant product
-    """
-
-    return functools.reduce(torch.kron, args).to(_DEVICE_CONTEXT.device)
 
 
-def frobenius(a, b):
-    """Compute the Frobenius inner product of `a` and `b`. 
+def frob(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """The Frobenius inner product.
 
     If `a` is a 3D tensor and `b` is a 2D tensor, then the inner product is
-    batched across `a`. Otherwise `a` and `b` must both be 2D tensors.
+    batched across `a`.
+
+    If both are 3D tensors, then the inner product is applied between each
+    2D tensor within.
 
     Parameters
     ----------
     a : Tensor
-        First argument(s)
+        A 2D tensor or 3D tensor
     b : Tensor
-        Second argument
+        A 2D tensor or 3D tensor
 
     Returns
     -------
     Tensor
-        Resultant (batch) product
+        Resultant (batch) inner product
     """
 
     try:
-        return torch.vmap(torch.trace)(torch.matmul(torch.conj(torch.transpose(a, 1, -1)), b)) \
-            .to(_DEVICE_CONTEXT.device)
-    except RuntimeError:
-        return torch.trace(torch.conj(torch.transpose(a, 0, 1)) @ b).to(_DEVICE_CONTEXT.device)
+        return torch.sum(torch.conj(a) * b, dim=(1, 2))
+
+    except IndexError:
+        return torch.sum(torch.conj(a) * b)
+    
+
+def kron(*args: torch.Tensor) -> torch.Tensor:
+    """The Kronecker product."""
+
+    return functools.reduce(torch.kron, args)
 
 
-def timegrid(start, stop, step):
-    """Create a grid of values across the specified interval with the
-    specified spacing.
+def msqrt_herm(a: torch.Tensor) -> torch.Tensor:
+    """The square root of a Hermitian matrix.
+
+    If `a` is a 3D tensor then the operation is applied to each
+    2D tensor within.
+
+    Parameters
+    ----------
+    a : Tensor
+        A 2D tensor or a 3D tensor
+        
+    Returns
+    -------
+    Tensor
+        Resultant (batch) matrix square root
+    """
+    
+    eigvals, eigvecs = torch.linalg.eigh(a)
+    
+    sqrt_eigvals = torch.sqrt(torch.clamp(eigvals, min=0))
+
+    return eigvecs @ torch.diag_embed(sqrt_eigvals.to(a.dtype)) @ torch.conj(eigvecs.transpose(-2, -1))
+
+
+def timegrid(start: float, stop: float, step: float) -> torch.Tensor:
+    """A grid of values across the given interval with the specified spacing.
 
     Parameters
     ----------
@@ -59,4 +91,28 @@ def timegrid(start, stop, step):
         Grid of values
     """
 
-    return torch.arange(start, stop + step, step).to(_DEVICE_CONTEXT.device)
+    return torch.arange(start, stop + step, step)
+
+
+def uhlmann(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """The Uhlmann fidelity.
+    
+    If `a` is a 3D tensor then the operation is applied to each
+    2D tensor within.
+
+    Parameters
+    ----------
+    a : Tensor
+        A 2D tensor or a 3D tensor Hermitian, PSD matrices
+    b : torch.Tensor
+        A 2D tensor or a 3D tensor of Hermitian, PSD matrices
+
+    Returns
+    -------
+    torch.Tensor
+        Resultant (batch) state fidelity
+    """
+    
+    sqrt_a = msqrt_herm(a)
+
+    return (msqrt_herm(sqrt_a @ b @ sqrt_a)).diagonal(dim1=-2, dim2=-1).real ** 2

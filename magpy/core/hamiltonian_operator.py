@@ -4,12 +4,34 @@ import torch
 import magpy as mp
 from .._device import _DEVICE_CONTEXT
 
+
 class HamiltonianOperator:
     """A Hamiltonian operator.
 
     A representation of a Hamiltonian operator, formed of a sum of Pauli
-    operators with functional coefficients.
+    operators with constant or function coefficients.
 
+    A batch operator may be created by providing at least one tensor 
+    coefficient.
+
+    Examples
+    --------
+    >>> H = torch.tensor([1,2])*X() + torch.sin*Y()
+    >>> H
+    tensor([1, 2])*X1 + sin*Y1
+    >>> H(torch.tensor(1))
+    tensor([[[0.+0.0000j, 1.-0.8415j],
+            [1.+0.8415j, 0.+0.0000j]],
+            [[0.+0.0000j, 2.-0.8415j],
+            [2.+0.8415j, 0.+0.0000j]]], dtype=torch.complex128)
+
+    >>> G = torch.square*X()
+    >>> G
+    square*X1
+    >>> G(torch.tensor(3))
+    tensor([[0.+0.j, 9.+0.j],
+            [9.+0.j, 0.+0.j]], dtype=torch.complex128)
+ 
     Attributes
     ----------
     data : dict
@@ -27,29 +49,121 @@ class HamiltonianOperator:
 
         self.data = {}
 
-        for pair in pairs:
+        for coeff, pauli_string in pairs:
             try:
                 # Move any constant coefficients to the corresponding PauliString.
-                if pair[0].scale != 1:
-                    pair[1] *= pair[0].scale
-                    pair[0].scale = 1
+                if coeff.scale != 1:
+                    pauli_string *= coeff.scale
+                    coeff.scale = 1
+
             except AttributeError:
-                if isinstance(pair[0], Number):
-                    pair[1] *= pair[0]
-                    pair[0] = 1
+                if isinstance(coeff, Number):
+                    pauli_string *= coeff
+                    coeff = 1
 
             try:
-                self.data[pair[0]].append(pair[1])
+                self.data[coeff].append(pauli_string)
+
             except KeyError:
-                self.data[pair[0]] = pair[1]
+                self.data[coeff] = pauli_string
+
             except AttributeError:
-                self.data[pair[0]] = [self.data[pair[0]], pair[1]]
+                self.data[coeff] = [self.data[coeff], pauli_string]
 
         self.data = HamiltonianOperator.__simplify_and_sort_data(self.data)
 
-    def __eq__(self, other):
-        return self.data == other.data
+    def __add__(self, other):
+        out = HamiltonianOperator()
 
+        try:
+            out.data = self.data | other.data
+
+        except AttributeError:
+            # PauliString; add it to constants.
+            out.data = deepcopy(self.data)
+
+            try:
+                out.data[1].append(other)
+
+            except KeyError:
+                out.data[1] = other
+
+            except AttributeError:
+                out.data[1] = [out.data[1], other]
+
+        else:
+            # HamiltionianOperator.
+            for coeff in list(set(self.data.keys() & other.data.keys())):
+                out.data[coeff] = []
+
+                try:
+                    out.data[coeff].extend(self.data[coeff])
+
+                except TypeError:
+                    out.data[coeff].append(self.data[coeff])
+
+                try:
+                    out.data[coeff].extend(other.data[coeff])
+
+                except TypeError:
+                    out.data[coeff].append(other.data[coeff])
+
+        out.data = HamiltonianOperator.__simplify_and_sort_data(out.data)
+
+        return out
+
+    def __call__(self, t=None, n_qubits=None) -> torch.Tensor:
+        if n_qubits is None:
+            n_qubits = max(max(p.qubits) if p.qubits else 0 for p in self.pauli_operators)
+
+        if self.is_constant():
+            return self.__call_time_independent(n_qubits)
+
+        if t is None:
+            raise ValueError(
+                "Hamiltonian is not constant. A value of t is required.")
+
+        return self.__call_time_dependent(t, n_qubits)
+
+    def __eq__(self, other):
+        """Two HamiltonianOperators are equal if they have the same keys in their data
+        dictionaries and the corresponding values are equal. If the values are lists,
+        they must contain the same elements regardless of order.
+        """
+
+        if not isinstance(other, HamiltonianOperator):
+            return False
+
+        if set(self.data.keys()) != set(other.data.keys()):
+            return False
+
+        for key in self.data:
+            self_val = self.data[key]
+            other_val = other.data[key]
+
+            if isinstance(self_val, list) and isinstance(other_val, list):
+                if len(self_val) != len(other_val):
+                    return False
+
+                self_set = {str(ps) for ps in self_val}
+                other_set = {str(ps) for ps in other_val}
+
+                if self_set != other_set:
+                    return False
+
+            elif isinstance(self_val, list) and not isinstance(other_val, list):
+                if len(self_val) != 1 or self_val[0] != other_val:
+                    return False
+
+            elif not isinstance(self_val, list) and isinstance(other_val, list):
+                if len(other_val) != 1 or self_val != other_val[0]:
+                    return False
+
+            elif self_val != other_val:
+                return False
+
+        return True
+    
     def __mul__(self, other):
         out = HamiltonianOperator()
 
@@ -64,146 +178,128 @@ class HamiltonianOperator:
                     try:
                         for i in range(len(out.data[coeff])):
                             out.data[coeff][i] *= other
+
                     except TypeError:
                         out.data[coeff] *= other
 
             else:
-                # other is FunctionProduct or other type of function.
+                # FunctionProduct or other type of function.
                 for coeff in list(out.data):
                     out.data[mp.FunctionProduct(coeff, other)] = out.data.pop(coeff)
 
         out.data = HamiltonianOperator.__simplify_and_sort_data(out.data)
+
         return out
-
-    __rmul__ = __mul__
-
-    def __add__(self, other):
-        out = HamiltonianOperator()
-
-        try:
-            out.data = self.data | other.data
-        except AttributeError:
-            # other is PauliString; add it to constants.
-            out.data = deepcopy(self.data)
-
-            try:
-                out.data[1].append(other)
-            except KeyError:
-                out.data[1] = other
-            except AttributeError:
-                out.data[1] = [out.data[1], other]
-        else:
-            # other is HamiltionianOperator.
-            for coeff in list(set(self.data.keys() & other.data.keys())):
-                out.data[coeff] = []
-
-                try:
-                    out.data[coeff].extend(self.data[coeff])
-                except TypeError:
-                    out.data[coeff].append(self.data[coeff])
-
-                try:
-                    out.data[coeff].extend(other.data[coeff])
-                except TypeError:
-                    out.data[coeff].append(other.data[coeff])
-
-        out.data = HamiltonianOperator.__simplify_and_sort_data(out.data)
-        return out
-
+    
     def __neg__(self):
         out = HamiltonianOperator()
         out.data = deepcopy(self.data)
+
         return -1 * out
-
-    def __sub__(self, other):
-        out = self + -other
-        return out
-
+    
     def __repr__(self):
-        return str(self.data)
+        result = ""
 
-    def __str__(self):
-        out = ""
         for f, p in self.data.items():
             try:
                 p_str = str(p)
-                scale_pos = p_str.find('*')
+
+                scale_pos = p_str.find('*') if p_str[0].isnumeric() or p_str.startswith("tensor") else -1
 
                 if isinstance(p.scale, torch.Tensor) or p.scale != 1:
-                    out += p_str[:scale_pos] + '*'
+                    result += p_str[:scale_pos] + '*'
 
-                out = HamiltonianOperator.__add_coeff_to_str(out, f)
-                out += p_str[scale_pos + 1:] if scale_pos > 0 else p_str
+                result = HamiltonianOperator.__add_coeff_to_str(result, f)
+                
+                result += p_str[scale_pos + 1:] if scale_pos > 0 else p_str
 
             except AttributeError:
-                out = HamiltonianOperator.__add_coeff_to_str(out, f)
+                result = HamiltonianOperator.__add_coeff_to_str(result, f)
 
-                out += '(' if f != 1 else ""
-                out += " + ".join([str(q) for q in p])
-                out += ')' if f != 1 else ""
+                result += '(' if f != 1 else ""
+                result += " + ".join([str(q) for q in p])
+                result += ')' if f != 1 else ""
 
-            out += " + "
+            result += " + "
 
-        return out[:-3]
+        return result[:-3]
 
-    def __call__(self, t=None, n_qubits=None):
-        if n_qubits is None:
-            n_qubits = max(max(p.qubits) if p.qubits else 0 for p in self.pauli_operators())
+    __rmul__ = __mul__
 
-        if self.is_constant():
-            return self.__call_time_independent(n_qubits)
-
-        if t is None:
-            raise ValueError(
-                "Hamiltonian is not constant. A value of t is required.")
-
-        # Convert input to tensor.
-        try:
-            t = t.clone().detach()
-        except AttributeError:
-            t = torch.tensor(t)
-
-        return self.__call_time_dependent(t, n_qubits)
+    def __sub__(self, other):
+        return self + -other
 
     def is_constant(self):
-        "Return true if the Hamiltonian is time-independent."
+        """Return true if the Hamiltonian is time-independent."""
+
         for coeff in self.data:
             if not isinstance(coeff, Number | torch.Tensor):
                 try:
                     if not coeff.is_empty():
                         return False
+
                 except AttributeError:
                     return False
-        return True
 
-    def is_interacting(self):
+        return True
+    
+    def is_interacting(self) -> bool:
         """Return true if the Hamiltonian's qubits are interacting."""
+
         for ps in self.data.values():
             try:
                 if len(ps.qubits) != 1:
                     return True
+
             except AttributeError:
                 for p in ps:
                     if len(p.qubits) != 1:
                         return True
+        
         return False
 
+    def qutip(self):
+        """Convert to QuTiP form."""
+
+        if self.is_constant():
+            return self.__qutip_constant(self.unpack_data())
+        
+        constant_components = [state for state in self.unpack_data() if isinstance(state[0], Number | torch.Tensor)]
+        
+        time_dependent_components = [state for state in self.unpack_data() if state not in constant_components]
+
+        return [self.__qutip_constant(constant_components)] + [[c[1].qutip(self.n_qubits), c[0]] for c in time_dependent_components]
+    
     def unpack_data(self):
         """All function-operator pairs in H, unpacking those with shared functions."""
         return [(k, v) for k, items in self.data.items() for v in (items if isinstance(items, list) else [items])]
 
+    @property
+    def batch_count(self):
+        return max(p.batch_count() for p in self.pauli_operators())
+
+    @property
     def funcs(self):
-        """All functions in H."""
-        # return list(self.data.keys())
+        """All coefficients in H."""
+
         return [u[0] for u in self.unpack_data()]
 
+    @property
+    def n_qubits(self):
+        """Number of qubits in operator."""
+        return max(p.n_qubits for p in self.pauli_operators())
+
+    @property
     def pauli_operators(self):
         """All Pauli operators in H."""
+
         return [u[1] for u in self.unpack_data()]
 
     def __call_time_independent(self, n_qubits):
-        # Return matrix representation when constant.
+        """Calculate the matrix representation of the operator."""
+
         out = 0
+
         for p in self.pauli_operators():
             try:
                 p_val = p(n_qubits)
@@ -220,56 +316,66 @@ class HamiltonianOperator:
         return out
 
     def __call_time_dependent(self, t, n_qubits):
-        out = 0
+        """Evaluate the operator at the given time."""
+        result = 0
+
         for coeff, p in self.unpack_data():
             p_val = p(n_qubits).to(_DEVICE_CONTEXT.device)
 
-            # Evaluate coefficient if it's a function.
             try:
                 coeff = coeff(t).to(_DEVICE_CONTEXT.device)
             except TypeError:
                 pass
 
-            # Evaluate next term in data.
             next_term = 0
+
             try:
                 next_term = coeff.reshape(-1,1,1) * p_val
+
             except AttributeError:
                 next_term = coeff * p_val
 
             # If p is a batch, repeat the current value to agree with its shape.
             try:
-                if out.dim() == 2 and next_term.dim() == 3:
-                    out = out.repeat(len(next_term), 1, 1)
+                if result.dim() == 2 and next_term.dim() == 3:
+                    result = result.repeat(len(next_term), 1, 1)
+
             except AttributeError:
                 pass
 
-            out += next_term
+            try:
+                result += next_term
 
-        return out
+            except RuntimeError:
+                result = result.repeat(next_term.shape[0], 1, 1) + next_term
+
+        return result.squeeze()
+
+    @staticmethod
+    def __add_coeff_to_str(result, f):
+        try:
+            result += f.__name__ + '*'
+
+        except AttributeError:
+            try:
+                if f != 1:
+                    result += str(f) + '*'
+
+            except (RuntimeError, AttributeError):
+                result += str(f) + '*'
+
+        return result
 
     @staticmethod
     def __simplify_data(arrs):
-        # Collect all PauliStrings in all lists in arrs.
+        """Collect all PauliStrings in all lists in"""
         for coeff in arrs:
             arrs[coeff] = mp.PauliString.collect(arrs[coeff])
 
     @staticmethod
-    def __add_coeff_to_str(out, f):
-        try:
-            out += f.__name__ + '*'
-        except AttributeError:
-            try:
-                if f != 1:
-                    out += str(f) + '*'
-            except (RuntimeError, AttributeError):
-                out += str(f) + '*'
-
-        return out
-
-    @staticmethod
     def __sort_data(data):
-        # Move all constant keys to the start of the dictionary.
+        """Move all constant keys to the start of the dictionary."""
+
         const_keys = []
         other_keys = []
 
@@ -281,4 +387,14 @@ class HamiltonianOperator:
     @staticmethod
     def __simplify_and_sort_data(data):
         HamiltonianOperator.__simplify_data(data)
+
         return HamiltonianOperator.__sort_data(data)
+
+    @staticmethod
+    def __qutip_constant(states):
+        if not states:
+            return 0
+
+        n = max(max(states[i][1].qubits) for i in range(len(states)))
+
+        return sum(state[0] * state[1].qutip(n) for state in states)

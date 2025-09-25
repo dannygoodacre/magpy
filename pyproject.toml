@@ -1,6 +1,6 @@
 [project]
 name = "magpy"
-version = "0.0.1"
+version = "1.0.0"
 description = "Magnus based time-integration for spins and qubits under a magnetic field."
 readme = "README.md"
 license = { text = "MIT" }
@@ -31,7 +31,3 @@ find = {}
 pythonpath = [
     "."
 ]
-
-[tool.flake8]
-max-line-length = 120
-per-file-ignores = "*/__init__.py: F401  test_*.py: E128"

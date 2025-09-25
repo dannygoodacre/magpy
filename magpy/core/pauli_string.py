@@ -28,22 +28,42 @@ def Id():
 class PauliString:
     """A multi-qubit Pauli operator.
 
-    A representation of a tensor product of single qubit Pauli operators.
+    A representation of the tensor product of single qubit Pauli operators.
     Identity operators are inferred from the gaps in the indices in the
     internal dictionary.
+    
+    A batch operator may be created by providing a tensor coefficient.
+
+    Examples
+    --------
+    >>> a = 3 * X()
+    >>> a
+    3*X1
+    >>> a.matrix()
+    tensor([[0.+0.j, 3.+0.j],
+            [3.+0.j, 0.+0.j]], dtype=torch.complex128)
+
+    >>> b = torch.tensor([1,2]) * Y()
+    >>> b
+    tensor([1, 2])*Y1
+    >>> b.matrix()
+    tensor([[[0.+0.j, 1.+0.j],
+            [1.+0.j, 0.+0.j]],
+            [[0.+0.j, 2.+0.j],
+            [2.+0.j, 0.+0.j]]], dtype=torch.complex128)
 
     Attributes
     ----------
     qubits : dict
         The qubits and their indices in the operator
-    scale : Number
-        Scalar coefficient
+    scale : Number | Tensor
+        Constant coefficient
     """
 
-    matrices = {
-        'X': torch.tensor([[0, 1], [1, 0]]),
-        'Y': torch.tensor([[0, -1j], [1j, 0]]),
-        'Z': torch.tensor([[1, 0], [0, -1]])
+    _matrices = {
+        'X': torch.tensor([[0, 1], [1, 0]]).to(_DEVICE_CONTEXT.device),
+        'Y': torch.tensor([[0, -1j], [1j, 0]]).to(_DEVICE_CONTEXT.device),
+        'Z': torch.tensor([[1, 0], [0, -1]]).to(_DEVICE_CONTEXT.device)
     }
 
     def __init__(self, x=None, y=None, z=None, scale=1):
@@ -53,8 +73,8 @@ class PauliString:
         ----------
         x, y, z : set[int], optional
             Position of the Pauli qubits in the operator, by default None
-        scale : int, optional
-            Scalar coefficient, by default 1
+        scale : int | Tensor, optional
+            Constant coefficient, by default 1
         """
 
         self.qubits = {}
@@ -63,60 +83,88 @@ class PauliString:
         for q, label in zip([x, y, z], ["X", "Y", "Z"]):
             try:
                 self.qubits |= {n: label for n in q}
+
             except TypeError:
                 if q is not None:
                     self.qubits[q] = label
+
+    def __add__(self, other):
+        try:
+            if self.qubits == other.qubits:
+                scale = self.scale + other.scale
+
+                if torch.is_tensor(scale) and torch.all(scale.eq(0)) or isinstance(scale, Number) and scale == 0:
+                    return 0
+
+                out = PauliString()
+                out.scale = scale
+                out.qubits = self.qubits
+
+                return out
+
+            return mp.HamiltonianOperator([1, self], [1, other])
+
+        except AttributeError:
+            # other is HOp.
+            return other + self
+        
+    def __call__(self, n_qubits=None) -> torch.Tensor:
+        if n_qubits is None:
+            n_qubits = self.n_qubits
+
+        qubits = [torch.eye(2) for _ in range(n_qubits)]
+
+        for index, qubit in self.qubits.items():
+            qubits[index - 1] = PauliString._matrices[qubit]
+
+        try:
+            scale = self.scale.view(len(self.scale), 1, 1)
+        except (AttributeError, TypeError):
+            scale = self.scale
+
+        return scale * mp.kron(*qubits).type(torch.complex128)
 
     def __eq__(self, other):
         return self.qubits == other.qubits and self.scale == other.scale
 
     def __mul__(self, other):
         if isinstance(other, mp.PauliString):
-            return self.__mul_ps(other)
+            return self.__mul_pauli_string(other)
 
         if isinstance(other, mp.HamiltonianOperator):
-            return self.__mul_hop(other)
+            return self.__mul_hamiltonian_operator(other)
 
         if isinstance(other, Number | torch.Tensor):
-            return self.__mul_num(other)
+            return self.__mul_scalar(other)
 
         try:
-            # other is FunctionProduct.
+            # FunctionProduct.
             self *= other.scale
             other.scale = 1
+
         except AttributeError:
-            # other is another type of function
+            # Other type of function.
             pass
 
         return mp.HamiltonianOperator([other, self])
 
-    __rmul__ = __mul__ # This may have to be changed
-
-    def __add__(self, other):
-        try:
-            if self.qubits == other.qubits:
-                scale = self.scale + other.scale
-                if torch.is_tensor(scale) and torch.all(scale.eq(0)) or isinstance(scale, Number) and scale == 0:
-                    return 0
-
-                out = PauliString(scale=scale)
-                out.qubits = self.qubits
-                return out
-
-            return mp.HamiltonianOperator([1, self], [1, other])
-
-        except AttributeError:
-            # other is HOp
-            return other + self
-
     def __neg__(self):
-        s = PauliString(scale=-self.scale)
-        s.qubits = self.qubits
-        return s
+        out = PauliString()
+        out.scale = -self.scale
+        out.qubits = self.qubits
 
-    def __sub__(self, other):
-        return self + -other
+        return out
+    
+    def __radd__(self, other):
+        if other == 0:
+            return self
 
+    def __rmul__(self, other):
+        if isinstance(other, Number | torch.Tensor):
+            return self.__mul_scalar(other)
+        
+        return self * other
+    
     def __repr__(self):
         out = ""
 
@@ -130,44 +178,75 @@ class PauliString:
 
         return out
 
-    def __call__(self, n=None):
-        if n is None:
-            n = max(self.qubits)
+    def __rsub__(self, other):
+        return -self + other
 
-        qubits = n * [torch.eye(2)]
-        for index, qubit in self.qubits.items():
-            qubits[index - 1] = PauliString.matrices[qubit]
+    def __str__(self):
+        return repr(self)
 
-        scale = self.scale.view(len(self.scale), 1, 1).to(_DEVICE_CONTEXT.device) \
-            if isinstance(self.scale, torch.Tensor) else self.scale
-        return scale * mp.kron(*qubits).type(torch.complex128).to(_DEVICE_CONTEXT.device)
+    def __sub__(self, other):
+        return self + -other
+    
+    def matrix(self, n_qubits=None) -> torch.Tensor:
+        """The matrix representation of the Pauli string."""
 
-    def __mul_ps(self, other):
-        # Right multiply by PauliString
-        out = PauliString()
-        out.scale = self.scale * other.scale
-        out.qubits = self.qubits | other.qubits
+        return self(n_qubits)
+    
+    @property
+    def batch_count(self) -> int:
+        """The number of parallel qubits in the batch Pauli string."""
+        
+        return self.scale.shape[0] if isinstance(self.scale, torch.Tensor) else 1
+ 
+    @property
+    def n_qubits(self) -> int:
+        return max(self.qubits) if self.qubits else 1
+
+    def qutip(self, n_qubits=None):
+        """Convert to QuTiP form."""
+
+        import qutip as qt
+
+        states = {
+            'X' : qt.sigmax(),
+            'Y' : qt.sigmay(),
+            'Z' : qt.sigmaz(),
+            'Id' : qt.qeye(2)
+        }
+
+        n_qubits = (self.n_qubits if n_qubits is None else n_qubits) + 1
+
+        if not self.qubits:
+            return qt.eye(2 ** n_qubits)
+
+        return self.scale * qt.tensor(states.get(self.qubits.get(i, 'Id')) for i in range(1, n_qubits))
+
+    def __mul_pauli_string(self, other):
+        result = PauliString()
+        result.scale = self.scale * other.scale
+        result.qubits = self.qubits | other.qubits
 
         for n in list(set(self.qubits.keys() & other.qubits.keys())):
             if self.qubits[n] == other.qubits[n]:
-                del out.qubits[n]
+                del result.qubits[n]
+
             else:
-                scale, spin = PauliString.__pauli_mul(self.qubits[n], other.qubits[n])
-                out.scale *= 1j * scale
-                out.qubits[n] = spin
+                phase, qubit = PauliString.__char_compose(self.qubits[n], other.qubits[n])
 
-        return out
+                result.scale *= 1j * phase
+                result.qubits[n] = qubit
 
-    def __mul_hop(self, other):
-        # Right multiply by Hamiltonian
+        return result
+
+    def __mul_hamiltonian_operator(self, other):
         return mp.HamiltonianOperator([1, self]) * other
 
-    def __mul_num(self, other):
-        # Multiply by scalar
-        out = deepcopy(self)
-        out.scale *= other
+    def __mul_scalar(self, other):
 
-        return out
+        result = deepcopy(self)
+        result.scale *= other
+
+        return result
 
     @staticmethod
     def collect(arr):
@@ -184,38 +263,43 @@ class PauliString:
             Collected instances or single instance
         """
 
-        counts = {}  # Number of occurrences of each unique PauliString.
-        out = []
+        unique_qubit_counts = {}
 
         try:
-            for ps in arr:
-                scale = ps.scale
-                ps = tuple(ps.qubits.items())
+            # list[PauliString].
+            for pauli_string in arr:
+                qubits = tuple(pauli_string.qubits.items())
 
-                try:
-                    counts[ps] += scale
-                except KeyError:
-                    counts[ps] = scale
-        except TypeError:  # arr is single PauliString.
+                unique_qubit_counts[qubits] = unique_qubit_counts.get(qubits, 0) + pauli_string.scale
+
+        except TypeError:
+            # PauliString.
             return arr
 
-        for ps, c in counts.items():
-            a = PauliString()
-            a.qubits = dict(ps)
-            a.scale = c
-            out.append(a)
+        result = []
 
-        return out[0] if len(out) == 1 else out
+        for qubits, count in unique_qubit_counts.items():
+            pauli_string = PauliString()
+
+            pauli_string.qubits = dict(qubits)
+            pauli_string.scale = count
+
+            result.append(pauli_string)
+
+        return result[0] if len(result) == 1 else result
 
     @staticmethod
-    def __e_ijk(i, j, k):
-        # Levi-Civita symbol.
-        return int((i - j) * (j - k) * (k - i) / 2)
+    def __char_compose(a, b):
+        products = {
+            ('X', 'Y'): (1, 'Z'), ('Y', 'X'): (-1, 'Z'),
+            ('Y', 'Z'): (1, 'X'), ('Z', 'Y'): (-1, 'X'),
+            ('Z', 'X'): (1, 'Y'), ('X', 'Z'): (-1, 'Y'),
+        }
 
+        return products[(a,  b)]
+ 
     @staticmethod
-    def __pauli_mul(a, b):
-        # Composition of two Pauli qubits.
-        if a == b:
-            return None
-        c = "XYZ".replace(a, "").replace(b, "")
-        return PauliString.__e_ijk(ord(a), ord(b), ord(c)), c
+    def _update_device():
+        PauliString._matrices['X'] = PauliString._matrices['X'].to(_DEVICE_CONTEXT.device)
+        PauliString._matrices['Y'] = PauliString._matrices['Y'].to(_DEVICE_CONTEXT.device)
+        PauliString._matrices['Z'] = PauliString._matrices['Z'].to(_DEVICE_CONTEXT.device)

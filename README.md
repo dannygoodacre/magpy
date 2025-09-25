@@ -1,5 +1,5 @@
 <h1 align="center">
-    <img src="./branding/logo/banner.svg" width="350">
+    <img src="./branding/banner.svg" width="350">
 </h1>
 
 Magnus based time-integration for qubits under a magnetic field.
@@ -16,6 +16,6 @@ To build from source:
 
 1. Clone this repository
 
-2. Install the [base requirements](requirements/base.txt)
+2. Install the [dev requirements](requirements/dev.txt)
 
 3. Run `python3 -m build .` from the root directory
