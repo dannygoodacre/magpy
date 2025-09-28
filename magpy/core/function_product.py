@@ -60,8 +60,11 @@ class FunctionProduct:
         return out * self.scale
 
     def __eq__(self, other):
-        return self.funcs == other.funcs and self.scale == other.scale
-    
+        try:
+            return self.funcs == other.funcs and self.scale == other.scale
+        except:
+            return False
+
     def __hash__(self):
         return hash(tuple(self.funcs)) + hash(self.scale)
 

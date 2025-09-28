@@ -173,7 +173,7 @@ class HamiltonianOperator:
         except AttributeError:
             out.data = deepcopy(self.data)
 
-            if isinstance(other, Number | mp.PauliString):
+            if isinstance(other, Number | torch.Tensor | mp.PauliString):
                 for coeff in out.data:
                     try:
                         for i in range(len(out.data[coeff])):
@@ -276,7 +276,7 @@ class HamiltonianOperator:
 
     @property
     def batch_count(self):
-        return max(p.batch_count() for p in self.pauli_operators())
+        return max(p.batch_count for p in self.pauli_operators)
 
     @property
     def funcs(self):
@@ -300,7 +300,7 @@ class HamiltonianOperator:
 
         out = 0
 
-        for p in self.pauli_operators():
+        for p in self.pauli_operators:
             try:
                 p_val = p(n_qubits)
 

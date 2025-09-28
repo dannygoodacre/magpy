@@ -14,7 +14,12 @@ References
 
 
 from math import sqrt
+from numbers import Number
+from typing import Callable
+
 import torch
+import expsolve as es
+
 from .core import PauliString, Id, HamiltonianOperator
 from ._device import _DEVICE_CONTEXT
 
@@ -30,7 +35,12 @@ def _update_device():
     _WEIGHTS = _WEIGHTS.to(_DEVICE_CONTEXT.device)
 
 
-def evolve(H: HamiltonianOperator, rho0: PauliString, tlist: torch.Tensor, n_qubits: int = None) -> torch.Tensor:
+def evolve(H: HamiltonianOperator, 
+           rho0: PauliString, 
+           tlist: torch.Tensor, 
+           n_qubits: int = None,
+           observables: dict[str, Callable[[torch.Tensor, Number], torch.Tensor]] = {},
+           store_intermediate: bool = False) -> tuple[torch.Tensor, dict[str, torch.Tensor], torch.Tensor | None]:
     """Liouville-von Neumann evolution of the density matrix under a given Hamiltonian.
     
     Evolve the density matrix `rho0` using the Hamiltonian `H`.
@@ -51,8 +61,8 @@ def evolve(H: HamiltonianOperator, rho0: PauliString, tlist: torch.Tensor, n_qub
     >>> states = evolve(H, rho0, tlist)
     >>> y1 = frobenius(states[0], Y().matrix())
     >>> y2 = frobenius(states[1], Y().matrix())
-    
-    >>> H = torch.cosY() + torch.sin*X(2) + Y()
+        
+    >>> H = torch.cos*Y() + torch.sin*X(2) + Y()
     >>> rho0 = X(2)
     >>> tlist = timegrid(0, 10, 0.01)
     >>> states = evolve(H, rho0, tlist)
@@ -79,74 +89,55 @@ def evolve(H: HamiltonianOperator, rho0: PauliString, tlist: torch.Tensor, n_qub
         H = HamiltonianOperator([1, H])
         
     if n_qubits is None:
-        n_qubits = max(max(p.qubits.keys()) for p in H.pauli_operators())
+        n_qubits = max(max(p.qubits.keys()) for p in H.pauli_operators)
         
-    batch_count = H.batch_count()
-
-    dim = 2 ** n_qubits
+    batch_count = H.batch_count
         
     if batch_count > 1:
-        states = torch.empty((len(tlist), batch_count, dim, dim), dtype=torch.complex128)
-
+        rho0 = torch.stack([rho0(n_qubits)] * batch_count)
     else:
-        states = torch.empty((len(tlist), dim, dim), dtype=torch.complex128)
-
-    states[0] = rho0()
-
-    dt = tlist[1] - tlist[0]
+        rho0 = rho0(n_qubits)
 
     if H.is_constant():
-        states = _evolve_time_independent(H, tlist, dt, states)
-    else:
-        states = _evolve_time_dependent(H, tlist, states, n_qubits)
-        
-    if batch_count > 1:
-        return states.permute(1, 0, 2, 3)
-    
-    return states.unsqueeze(0)
+        h = tlist[1] - tlist[0]
 
-
-def _evolve_time_independent(H, tlist, dt, states):
-    u = torch.matrix_exp(-1j * dt * H())
-    ut = u.transpose(-2, -1).conj()
-
-    for i in range(len(tlist) - 1):
-        states[i + 1] = u @ states[i] @ ut
-
-    return states
-
-
-def _evolve_time_dependent(H, tlist, states, n_qubits):
-    step = tlist[1] - tlist[0]
-
-    funcs = H.funcs()
-    ops = H.pauli_operators()
-
-    for i in range(len(tlist) - 1):
-        knots = tlist[i] + 0.5*step*(1 + _KNOTS)
-
-        first_term = _first_term(H, knots, step, n_qubits)
-        second_term = _second_term(funcs, ops, knots, step, n_qubits)
-
-        u = torch.matrix_exp(-1j * (first_term - 0.5*second_term))
-        
+        u = torch.matrix_exp(-1j * h * H(n_qubits=n_qubits))
         ut = u.transpose(-2, -1).conj()
-        
-        states[i + 1] = u @ states[i] @ ut
 
-    return states
- 
-    
-def _first_term(H, knots, step, n_qubits):
+        stepper = lambda _, __, rho: u @ rho @ ut
+
+    else:
+        def stepper(t, h, rho):
+            knots = t + 0.5*h*(1 + _KNOTS)
+
+            first_term = _first_term(H, knots, h)
+            second_term = _second_term(H.funcs, H.pauli_operators, knots, h)
+   
+            foo = first_term - 0.5*second_term
+
+            u = torch.matrix_exp(-1j * foo(n_qubits))
+            ut = u.transpose(-2, -1).conj()
+            
+            return u @ rho @ ut
+
+    rho, obsvalues, states = es.solvediffeq(rho0, tlist, stepper, observables, store_intermediate)
+
+    if batch_count > 1:
+        return rho, obsvalues, states.permute(1, 0, 2, 3) if store_intermediate else None
+
+    return rho, {k: v[:1, :] for k, v in obsvalues.items()}, states.unsqueeze(0) if store_intermediate else None
+
+
+def _first_term(H, knots, h):
     result = 0
 
     for f, p in H.unpack_data():
-        result += torch.sum(_WEIGHTS * (f(knots) if callable(f) else f)) * p(n_qubits)
+        result += torch.sum(_WEIGHTS * (f(knots) if callable(f) else f)) * p
  
-    return 0.5 * step * result
+    return 0.5 * h * result
 
 
-def _second_term(funcs, ops, knots, step, n_qubits):
+def _second_term(funcs, ops, knots, h):
     result = 0
     
     n = len(funcs)
@@ -180,6 +171,6 @@ def _second_term(funcs, ops, knots, step, n_qubits):
 
             op = ops[i]*ops[j] - ops[j]*ops[i]
             
-            result += coeff * op(n_qubits)
+            result += coeff * op
 
-    return (sqrt(15) / 54) * step**2 * result
+    return (sqrt(15) / 54) * h**2 * result
