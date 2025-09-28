@@ -112,9 +112,18 @@ class HamiltonianOperator:
 
         return out
 
-    def __call__(self, t=None, n_qubits=None) -> torch.Tensor:
+    def __call__(self, t=None):
+        result = 0
+
+        # TODO: Use new unpack.
+        for f, p in self.unpack():
+            result += (f(t) if callable(f) else f) * p
+            
+        return result
+
+    def matrix(self, t=None, n_qubits=None) -> torch.Tensor:
         if n_qubits is None:
-            n_qubits = max(max(p.qubits) if p.qubits else 0 for p in self.pauli_operators)
+            n_qubits = max(max(p.qubits) if p.qubits else 0 for p in self.pauli_operators())
 
         if self.is_constant():
             return self.__call_time_independent(n_qubits)
@@ -168,7 +177,7 @@ class HamiltonianOperator:
         out = HamiltonianOperator()
 
         try:
-            out = sum((p[0]*p[1]*q[0]*q[1] for q in other.unpack_data() for p in self.unpack_data()), out)
+            out = sum((p[0]*p[1]*q[0]*q[1] for q in other.unpack() for p in self.unpack()), out)
 
         except AttributeError:
             out.data = deepcopy(self.data)
@@ -262,45 +271,75 @@ class HamiltonianOperator:
         """Convert to QuTiP form."""
 
         if self.is_constant():
-            return self.__qutip_constant(self.unpack_data())
+            return self.__qutip_constant(self.unpack())
         
-        constant_components = [state for state in self.unpack_data() if isinstance(state[0], Number | torch.Tensor)]
+        constant_components = [state for state in self.unpack() if isinstance(state[0], Number | torch.Tensor)]
         
-        time_dependent_components = [state for state in self.unpack_data() if state not in constant_components]
+        time_dependent_components = [state for state in self.unpack() if state not in constant_components]
 
         return [self.__qutip_constant(constant_components)] + [[c[1].qutip(self.n_qubits), c[0]] for c in time_dependent_components]
     
-    def unpack_data(self):
-        """All function-operator pairs in H, unpacking those with shared functions."""
-        return [(k, v) for k, items in self.data.items() for v in (items if isinstance(items, list) else [items])]
+    def unpack(self, t=None, unit_ops=False):
+        """All function-operator pairs in H."""
+        
+        if not t:
+            if unit_ops:
+                return [(f if callable(f) else op.scale, op.operator) for f, ops in self.data.items() for op in (ops if isinstance(ops, list) else [ops])]
+    
+            return [(f, op) for f, ops in self.data.items() for op in (ops if isinstance(ops, list) else [ops])]
+        
+        if unit_ops:
+            return [(f(t) if callable(f) else op.scale, op.operator) for f, ops in self.data.items() for op in (ops if isinstance(ops, list) else [ops])]
+        
+        return [(f(t) if callable(f) else f, op) for f, ops in self.data.items() for op in (ops if isinstance(ops, list) else [ops])]
+
 
     @property
     def batch_count(self):
         return max(p.batch_count for p in self.pauli_operators)
+    
+    def propagator(self, t=None):
+        """The exponential of -i * H(t)."""
 
-    @property
-    def funcs(self):
+        if t is None and not self.is_constant():
+            raise ValueError(
+                'Hamiltonian is not constant. A value of t is required.')
+        
+        if self.n_qubits == 1:
+            hop = self(t)
+            coeffs = torch.tensor(hop.coeffs(unit_ops=True))
+            ops = hop.pauli_operators(unit_ops=True)
+            
+            norm = torch.norm(coeffs)
+            
+            unit_coeffs = coeffs / norm
+
+            return torch.cos(norm)*mp.Id() - 1j*torch.sin(norm)*sum(c*op for c, op in zip(unit_coeffs, ops))
+
+    def coeffs(self, t=None, unit_ops=False):
         """All coefficients in H."""
 
-        return [u[0] for u in self.unpack_data()]
+        if t:
+            return [f(t) if callable(f) else f for f, _ in self.unpack(t, unit_ops)]
+
+        return [f for f, _ in self.unpack(t, unit_ops)]
+
+    def pauli_operators(self, unit_ops=False):
+        """All Pauli operators in H."""
+
+        return [op for _, op in self.unpack(unit_ops)]
 
     @property
     def n_qubits(self):
         """Number of qubits in operator."""
         return max(p.n_qubits for p in self.pauli_operators())
 
-    @property
-    def pauli_operators(self):
-        """All Pauli operators in H."""
-
-        return [u[1] for u in self.unpack_data()]
-
     def __call_time_independent(self, n_qubits):
         """Calculate the matrix representation of the operator."""
 
         out = 0
 
-        for p in self.pauli_operators:
+        for p in self.pauli_operators():
             try:
                 p_val = p(n_qubits)
 
@@ -319,7 +358,8 @@ class HamiltonianOperator:
         """Evaluate the operator at the given time."""
         result = 0
 
-        for coeff, p in self.unpack_data():
+        # TODO: Use new unpack.
+        for coeff, p in self.unpack():
             p_val = p(n_qubits).to(_DEVICE_CONTEXT.device)
 
             try:

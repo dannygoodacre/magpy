@@ -1,5 +1,5 @@
 from numbers import Number
-from copy import deepcopy
+from copy import copy, deepcopy
 import torch
 import magpy as mp
 from .._device import _DEVICE_CONTEXT
@@ -187,10 +187,35 @@ class PauliString:
     def __sub__(self, other):
         return self + -other
     
-    def matrix(self, n_qubits=None) -> torch.Tensor:
+    def as_single_qubit(self):
+        if len(self.qubits) == 0:
+            return Id()
+
+        if len(self.qubits) > 1:
+            raise RuntimeError(
+                'Cannot convert to single qubit')
+
+        (_, op), = self.qubits.items()
+
+        match op:
+            case 'X':
+                return X()
+            case 'Y':
+                return Y()
+            case 'Z':
+                return Z()
+
+    def matrix(self, n_qubits: int = None) -> torch.Tensor:
         """The matrix representation of the Pauli string."""
 
         return self(n_qubits)
+    
+    def expm(self):
+        "The exponential of the Pauli string."
+        
+        a = torch.tensor(self.scale)
+        
+        return torch.cosh(a)*Id() + (torch.sinh(a) / a)*self
     
     @property
     def batch_count(self) -> int:
@@ -201,6 +226,13 @@ class PauliString:
     @property
     def n_qubits(self) -> int:
         return max(self.qubits) if self.qubits else 1
+    
+    @property
+    def operator(self):
+        result = copy(self)
+        result.scale = 1
+
+        return result
 
     def qutip(self, n_qubits=None):
         """Convert to QuTiP form."""

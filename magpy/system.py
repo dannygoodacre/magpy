@@ -43,6 +43,8 @@ def evolve(H: HamiltonianOperator,
            store_intermediate: bool = False) -> tuple[torch.Tensor, dict[str, torch.Tensor], torch.Tensor | None]:
     """Liouville-von Neumann evolution of the density matrix under a given Hamiltonian.
     
+    TODO: Update this docstring.
+    
     Evolve the density matrix `rho0` using the Hamiltonian `H`.
 
     The result is the density matrix evaluated at each time point in `tlist`.
@@ -114,6 +116,8 @@ def evolve(H: HamiltonianOperator,
             second_term = _second_term(H.funcs, H.pauli_operators, knots, h)
    
             foo = first_term - 0.5*second_term
+            # print(foo)
+            # input()
 
             u = torch.matrix_exp(-1j * foo(n_qubits))
             ut = u.transpose(-2, -1).conj()
