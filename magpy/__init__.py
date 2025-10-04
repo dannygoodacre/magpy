@@ -1,7 +1,7 @@
-from .core.pauli_string import PauliString, X, Y, Z, Id
 from .core.function_product import FunctionProduct
 from .core.hamiltonian_operator import HamiltonianOperator
 from .core.linalg import frob, kron, timegrid, msqrt_herm, uhlmann
+from .core.pauli_string import PauliString, X, Y, Z, Id
 
 from .system import evolve
 
