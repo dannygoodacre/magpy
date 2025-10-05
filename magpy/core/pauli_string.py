@@ -5,7 +5,8 @@ import torch
 from torch import Tensor
 
 import magpy as mp
-from .._device import _DEVICE_CONTEXT
+from .._context import get_device
+from .._utils import format_number, format_tensor
 
 
 def X(*args):
@@ -57,9 +58,9 @@ class PauliString:
     """
 
     _matrices = {
-        'X': torch.tensor([[0, 1], [1, 0]]).to(_DEVICE_CONTEXT.device),
-        'Y': torch.tensor([[0, -1j], [1j, 0]]).to(_DEVICE_CONTEXT.device),
-        'Z': torch.tensor([[1, 0], [0, -1]]).to(_DEVICE_CONTEXT.device)
+        'X': torch.tensor([[0, 1], [1, 0]]).to(get_device()),
+        'Y': torch.tensor([[0, -1j], [1j, 0]]).to(get_device()),
+        'Z': torch.tensor([[1, 0], [0, -1]]).to(get_device())
     }
 
     def __init__(self, x=None, y=None, z=None, scale=1):
@@ -168,34 +169,28 @@ class PauliString:
             return self
 
     def __repr__(self):
-        out = ""
+        result = ''
 
         if isinstance(self._scale, torch.Tensor):
-            if self._scale.numel() == 1:
-                out += str(self._scale.item()) + '*'
-
-            else:
-                out += str(tuple(self._scale.tolist())) + '*'
+            result += format_tensor(self._scale) + '*'
 
         elif self._scale != 1:
-            out += str(self._scale) + '*'
+            result += format_number(self._scale) + '*'
 
         if self._qubits.items():
-            out += '*'.join(q[1] + str(q[0]) for q in sorted(self._qubits.items()))
+            result += '*'.join(q[1] + str(q[0]) for q in sorted(self._qubits.items()))
 
         else:
-            out += 'Id'
+            result += 'Id'
 
-        return out
+        return result
 
-    def __rmul__(self, other):
-        return self * other
+    __rmul__ = __mul__
 
     def __rsub__(self, other):
         return -self + other
-
-    def __str__(self):
-        return repr(self)
+    
+    __str__ = __repr__
 
     def __sub__(self, other):
         return self + -other
@@ -352,6 +347,6 @@ class PauliString:
 
     @staticmethod
     def _update_device():
-        PauliString._matrices['X'] = PauliString._matrices['X'].to(_DEVICE_CONTEXT.device)
-        PauliString._matrices['Y'] = PauliString._matrices['Y'].to(_DEVICE_CONTEXT.device)
-        PauliString._matrices['Z'] = PauliString._matrices['Z'].to(_DEVICE_CONTEXT.device)
+        PauliString._matrices['X'] = PauliString._matrices['X'].to(get_device())
+        PauliString._matrices['Y'] = PauliString._matrices['Y'].to(get_device())
+        PauliString._matrices['Z'] = PauliString._matrices['Z'].to(get_device())

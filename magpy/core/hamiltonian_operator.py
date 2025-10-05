@@ -13,7 +13,6 @@ class HamiltonianOperator:
         
         for coeff, pauli_string in pairs:
             try:
-                # Move any constant coefficients to the corresponding PauliString.
                 if coeff.scale != 1:
                     pauli_string *= coeff.scale
                     coeff.scale = 1
@@ -108,7 +107,7 @@ class HamiltonianOperator:
                 return False
 
         return True
-    
+  
     def __mul__(self, other):
         result = HamiltonianOperator()
 
@@ -181,6 +180,10 @@ class HamiltonianOperator:
             result.append(part)
 
         return ' + '.join(result)
+
+    __rmul__ = __mul__
+    
+    __str__ = __repr__
 
     @property
     def batch_count(self) -> int:
@@ -318,7 +321,7 @@ class HamiltonianOperator:
                 scale = getattr(pauli_string, 'scale', 1)
                 is_one = isinstance(scale, Number) and scale == 1
 
-                if t:
+                if t is not None:
                     if callable(coeff):
                         value = coeff(t) if is_one or not unit_ops else scale * coeff(t)
 

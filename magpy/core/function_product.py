@@ -1,8 +1,9 @@
 from numbers import Number
-from copy import deepcopy
 
-import torch
+from torch import Tensor
+
 import magpy as mp
+from .._utils import format_number, format_tensor
 
 
 class FunctionProduct:
@@ -33,92 +34,108 @@ class FunctionProduct:
             Functions
         """
 
-        self.funcs = {}
-        self.scale = 1
+        self._funcs = {}
+        self._scale = 1
 
         for f in funcs:
             try:
-                # FunctionProduct.
-                self.funcs = self.__merge(f.funcs)
-                self.scale *= f.scale
+                self._funcs = self.__merge(f.funcs)
+                self._scale *= f.scale
 
             except AttributeError:
                 try:
-                    # Scalar.
-                    self.scale *= f
+                    self._scale *= f
 
                 except TypeError:
-                    # other type of function.
-                    self.funcs = FunctionProduct.__add(self, f)
+                    self._funcs = FunctionProduct.__add(self, f)
 
     def __call__(self, arg):
         out = 1
 
-        for f in self.funcs:
+        for f in self._funcs:
                 out *= f(arg)
 
-        return out * self.scale
+        return out * self._scale
 
     def __eq__(self, other):
         try:
-            return self.funcs == other.funcs and self.scale == other.scale
+            return self._funcs == other.funcs and self._scale == other.scale
+
         except:
             return False
 
     def __hash__(self):
-        return hash(tuple(self.funcs)) + hash(self.scale)
+        return hash(tuple(self._funcs)) + hash(self._scale)
 
     def __mul__(self, other):
         if isinstance(other, mp.PauliString | mp.HamiltonianOperator):
             return other * self
 
-        out = FunctionProduct()
-        out.funcs = deepcopy(self.funcs)
-        out.scale = deepcopy(self.scale)
+        result = FunctionProduct()
+        result._funcs = dict(self._funcs)
+        result._scale = self._scale
 
-        if isinstance(other, Number | torch.Tensor):
-            out.scale *= other
+        if isinstance(other, Number | Tensor):
+            result._scale *= other
 
         else:
             try:
-                out.scale *= other.scale
-                out.funcs = self.__merge(other.funcs)
+                result._scale *= other.scale
+                result._funcs = self.__merge(other.funcs)
 
             except AttributeError:
-                out.funcs = FunctionProduct.__add(out, other)
+                result._funcs = FunctionProduct.__add(result, other)
 
-        return out
+        return result
 
     def __neg__(self):
-        return -1 * self
+        result = FunctionProduct()
+        result._funcs = dict(self._funcs)
+        result._scale = -self._scale
+
+        return result
 
     def __repr__(self):
-        return (str(self.scale) + "*" if isinstance(self.scale, torch.Tensor) or self.scale != 1 else "") \
-            + '*'.join([f.__name__ + (f"^{str(n)}" if n > 1 else "") for f, n in self.funcs.items()])
+        result = ''
+
+        if isinstance(self._scale, Tensor):
+            result += format_tensor(self._scale) + '*'
+
+        elif self._scale != 1:
+            result += format_number(self._scale) + '*'
+
+        if self._funcs.items():
+            result += '*'.join(f.__name__ + (f'^{n}' if n > 1 else '') for f, n in self._funcs.items())
+        
+        return result
 
     __rmul__ = __mul__
+    
+    __str__ = __repr__
+    
+    @property
+    def scale(self):
+        return self._scale
 
-    def __str__(self):
-        return repr(self)
-
+    @property
     def is_empty(self):
-        """Return true if function product contains no functions, else false."""
+        """Whether the function product contains no functions."""
 
-        return not self.funcs
+        return not self._funcs
 
     def __merge(self, funcs):
         """Merge dictionary into internal function dictionary."""
 
-        return {f: self.funcs.get(f, 0) + funcs.get(f, 0) for f in set(self.funcs) | set(funcs)}
+        return {f: self._funcs.get(f, 0) + funcs.get(f, 0) for f in set(self._funcs) | set(funcs)}
 
     @staticmethod
     def __add(fp, f):
         """Add function to internal function dictionary."""
 
         try:
-            fp.funcs[f] += 1
+            fp._funcs[f] += 1
 
         except KeyError:
-            fp.funcs[f] = 1
+            fp._funcs[f] = 1
 
-        return fp.funcs
+        return fp._funcs

@@ -21,7 +21,7 @@ import torch
 import expsolve as es
 
 from .core import PauliString, Id, HamiltonianOperator
-from ._device import _DEVICE_CONTEXT
+from ._context import get_device
 
 
 _KNOTS = torch.tensor([-sqrt(3/5), 0, sqrt(3/5)], dtype=torch.complex128)
@@ -31,8 +31,8 @@ _WEIGHTS = torch.tensor([5/9, 8/9, 5/9])
 def _update_device():
     global _KNOTS, _WEIGHTS
 
-    _KNOTS = _KNOTS.to(_DEVICE_CONTEXT.device)
-    _WEIGHTS = _WEIGHTS.to(_DEVICE_CONTEXT.device)
+    _KNOTS = _KNOTS.to(get_device())
+    _WEIGHTS = _WEIGHTS.to(get_device())
 
 
 def evolve(H: HamiltonianOperator, 
@@ -115,11 +115,9 @@ def evolve(H: HamiltonianOperator,
             first_term = _first_term(H, knots, h)
             second_term = _second_term(H.funcs, H.pauli_operators, knots, h)
    
-            foo = first_term - 0.5*second_term
-            # print(foo)
-            # input()
+            term = first_term - 0.5*second_term
 
-            u = torch.matrix_exp(-1j * foo(n_qubits))
+            u = torch.matrix_exp(-1j * term(n_qubits))
             ut = u.transpose(-2, -1).conj()
             
             return u @ rho @ ut
