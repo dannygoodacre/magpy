@@ -87,26 +87,37 @@ def evolve(H: HamiltonianOperator,
         The states of the system(s) over time
     """
 
+    # TODO: Can we optimise for PS instead of this?
     if isinstance(H, PauliString):
         H = HamiltonianOperator([1, H])
-        
+
     if n_qubits is None:
-        n_qubits = max(max(p.qubits.keys()) for p in H.pauli_operators)
-        
+        n_qubits = H.n_qubits
+
     batch_count = H.batch_count
         
     if batch_count > 1:
         rho0 = torch.stack([rho0(n_qubits)] * batch_count)
     else:
-        rho0 = rho0(n_qubits)
+        rho0 = rho0.matrix(n_qubits)
 
     if H.is_constant():
         h = tlist[1] - tlist[0]
 
-        u = torch.matrix_exp(-1j * h * H(n_qubits=n_qubits))
+        u = torch.matrix_exp(-1j * h * H.matrix(n_qubits=n_qubits))
+        print(u)
+        # u = H.propagator(h).matrix()
         ut = u.transpose(-2, -1).conj()
+        print(ut)
 
-        stepper = lambda _, __, rho: u @ rho @ ut
+        # stepper = lambda _, __, rho: u @ rho @ ut
+        
+        def stepper(_, __, rho):
+            # print('-------------------------------')
+            # print(f'rho: {rho}')
+            # print('-------------------------------')
+            
+            return u @ rho @ ut
 
     else:
         def stepper(t, h, rho):
@@ -127,13 +138,13 @@ def evolve(H: HamiltonianOperator,
     if batch_count > 1:
         return rho, obsvalues, states.permute(1, 0, 2, 3) if store_intermediate else None
 
-    return rho, {k: v[:1, :] for k, v in obsvalues.items()}, states.unsqueeze(0) if store_intermediate else None
+    return rho, {k: v[:1, :] for k, v in obsvalues.items()}, states if store_intermediate else None
 
 
-def _first_term(H, knots, h):
+def _first_term(H: HamiltonianOperator, knots, h):
     result = 0
 
-    for f, p in H.unpack_data():
+    for f, p in H.unpack(unit_ops=False):
         result += torch.sum(_WEIGHTS * (f(knots) if callable(f) else f)) * p
  
     return 0.5 * h * result

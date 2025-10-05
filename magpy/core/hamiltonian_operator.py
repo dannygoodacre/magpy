@@ -1,10 +1,12 @@
 from __future__ import annotations
 from numbers import Number
+from copy import deepcopy
 
 import torch
 from torch import Tensor
 
 import magpy as mp
+from .._utils import conjugate
 
 class HamiltonianOperator:
 
@@ -112,12 +114,12 @@ class HamiltonianOperator:
         result = HamiltonianOperator()
 
         try:
-            result = sum((self_coeff * self_op * other_coeff * other_op
+            result = sum((self_coeff * deepcopy(self_op) * other_coeff * deepcopy(other_op)
                           for other_coeff, other_op in other.unpack(unit_ops=False)
                           for self_coeff, self_op in self.unpack(unit_ops=False)), result)
 
         except AttributeError:
-            result._data = dict(self._data)
+            result._data = deepcopy(self._data)
 
             if isinstance(other, Number | Tensor | mp.PauliString):
                 for coeff in result._data:
@@ -134,6 +136,13 @@ class HamiltonianOperator:
 
         result.__simplify_and_sort_data()
 
+        return result
+    
+    def __neg__(self):
+        result = HamiltonianOperator()
+
+        result._data = deepcopy(self._data)
+        
         return result
 
     # TODO: Do we want this to be fully mathematical-looking? I.e. no `*`` and appending `(t)` to function names?
@@ -190,6 +199,21 @@ class HamiltonianOperator:
         """The number of parallel operators represented by the operator."""
 
         return max(op.batch_count for op in self.pauli_operators())
+
+    @property
+    def H(self) -> HamiltonianOperator:
+        result = HamiltonianOperator()
+        result._data = deepcopy(self._data)
+
+        for pauli_operator in result._data.values():
+            try:
+                pauli_operator._scale = conjugate(pauli_operator._scale)
+            
+            except AttributeError:
+                for op in pauli_operator:
+                    op._scale = conjugate(op._scale)
+
+        return result
 
     @property
     def n_qubits(self) -> int:
@@ -268,28 +292,36 @@ class HamiltonianOperator:
 
         return [op for (_, op) in self.unpack(unit_ops=unit_ops, as_matrices=as_matrices, n_qubits=n_qubits)]
 
-    def propagator(self, t: Tensor = None) -> HamiltonianOperator:
-        """The exponential of `-i * H(t)`."""
+    def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128), t: Tensor = None) -> HamiltonianOperator:
+        """The exponential of `-i * h * H(t)`."""
 
         if t is None and not self.is_constant():
-            raise ValueError(
-                'Operator is not constant. A value of t is required.')
+            raise ValueError('Operator is not constant. A value of t is required.')
 
         if self.n_qubits == 1:
             op = self(t)
 
             try:
-                coeffs = op.coeffs()
-                pauli_ops = op.pauli_operators()
+                coeffs = torch.as_tensor(op.coeffs(unit_ops=True), dtype=torch.complex128)
+                pauli_ops = op.pauli_operators(unit_ops=True)
                 
+                print(coeffs)
+                print(pauli_ops)
+
                 norm = torch.norm(coeffs)
 
-                unit_coeffs = coeffs / norm
-                
-                return torch.cos(norm)*mp.Id() - 1j*torch.sin(norm)*sum(c*op for c, op in zip(unit_coeffs, pauli_ops))
-            
+                if norm == 0:
+                    # Pure identity Hamiltonian
+                    return torch.exp(-1j * h * coeffs[0]) * mp.Id()
+
+                # Rebuild normalized Hamiltonian
+                H_normalized = sum(c * p for c, p in zip(coeffs / norm, pauli_ops))
+
+                return (torch.cos(h * norm) * mp.Id()
+                        - 1j * torch.sin(h * norm) * H_normalized)
+
             except AttributeError:
-                return op.propagator()
+                return op.propagator(h)
 
     def qutip(self):
         """The operator as a `QObj` instance."""

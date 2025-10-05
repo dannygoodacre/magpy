@@ -112,12 +112,12 @@ class PauliString:
             return False
 
     def __mul__(self, other):
-        if isinstance(other, mp.HamiltonianOperator):
-            return mp.HamiltonianOperator([1, result]) * other
-
         result = PauliString()
         result._scale = self._scale
         result._qubits = dict(self._qubits)
+
+        if isinstance(other, mp.HamiltonianOperator):
+            return mp.HamiltonianOperator([1, result]) * other
 
         if isinstance(other, Number | torch.Tensor):
             result._scale *= other
@@ -135,7 +135,7 @@ class PauliString:
 
             return mp.HamiltonianOperator([other, result])
 
-        result._scale *= other._scale
+        result._scale = result._scale * other._scale
         result._qubits |= other._qubits
 
         for n in list(set(self._qubits.keys() & other._qubits.keys())):
@@ -225,6 +225,14 @@ class PauliString:
         """The number of parallel operators represented by the Pauli string."""
 
         return self._scale.shape[0] if isinstance(self._scale, torch.Tensor) else 1
+    
+    @property
+    def H(self) -> PauliString:
+        result = PauliString()
+        result._scale = self._scale.conjugate()
+        result._qubits = dict(self._qubits)
+        
+        return result
 
     @property
     def is_single_qubit(self) -> bool:
@@ -296,10 +304,12 @@ class PauliString:
 
         return scale * mp.kron(*qubits).type(torch.complex128)
 
-    def propagator(self) -> PauliString | mp.HamiltonianOperator:
-        """The exponential of `-i * P`."""
-        
-        return torch.cos(self.scale)*Id() - 1j*torch.sin(self.scale)*self.operator
+    def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> PauliString | mp.HamiltonianOperator:
+        """The exponential of `-i * h * P`."""
+
+        v = self.scale * h
+
+        return torch.cos(v)*Id() - 1j*torch.sin(v)*self.operator
 
     def qutip(self, n_qubits: int = None):
         """The Pauli string as a `QObj` instance."""
