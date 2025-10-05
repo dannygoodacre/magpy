@@ -11,10 +11,12 @@ References
 
 
 import functools
+
 import torch
+from torch import Tensor
 
 
-def frob(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+def frob(a: Tensor, b: Tensor) -> Tensor:
     """The Frobenius inner product.
 
     If `a` is a 3D tensor and `b` is a 2D tensor, then the inner product is
@@ -43,13 +45,13 @@ def frob(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         return torch.sum(torch.conj(a) * b)
     
 
-def kron(*args: torch.Tensor) -> torch.Tensor:
+def kron(*args: Tensor) -> Tensor:
     """The Kronecker product."""
 
     return functools.reduce(torch.kron, args)
 
 
-def msqrt_herm(a: torch.Tensor) -> torch.Tensor:
+def msqrt_herm(a: Tensor) -> Tensor:
     """The square root of a Hermitian matrix.
 
     If `a` is a 3D tensor then the operation is applied to each
@@ -73,7 +75,7 @@ def msqrt_herm(a: torch.Tensor) -> torch.Tensor:
     return eigvecs @ torch.diag_embed(sqrt_eigvals.to(a.dtype)) @ torch.conj(eigvecs.transpose(-2, -1))
 
 
-def timegrid(start: float, stop: float, step: float) -> torch.Tensor:
+def timegrid(start: float, stop: float, step: float) -> Tensor:
     """A grid of values across the given interval with the specified spacing.
 
     Parameters
@@ -94,7 +96,7 @@ def timegrid(start: float, stop: float, step: float) -> torch.Tensor:
     return torch.arange(start, stop + step, step)
 
 
-def uhlmann(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+def uhlmann(a: Tensor, b: Tensor) -> Tensor:
     """The Uhlmann fidelity.
     
     If `a` is a 3D tensor then the operation is applied to each
@@ -104,12 +106,12 @@ def uhlmann(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     ----------
     a : Tensor
         A 2D tensor or a 3D tensor Hermitian, PSD matrices
-    b : torch.Tensor
+    b : Tensor
         A 2D tensor or a 3D tensor of Hermitian, PSD matrices
 
     Returns
     -------
-    torch.Tensor
+    Tensor
         Resultant (batch) state fidelity
     """
     
