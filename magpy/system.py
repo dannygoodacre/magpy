@@ -96,19 +96,19 @@ def evolve(H: HamiltonianOperator,
 
     batch_count = H.batch_count
         
-    if batch_count > 1:
-        rho0 = torch.stack([rho0(n_qubits)] * batch_count)
-    else:
-        rho0 = rho0.matrix(n_qubits)
+    # if batch_count > 1:
+    #     rho0 = torch.stack([rho0.matrix(n_qubits)] * batch_count)
+    # else:
+    #     rho0 = rho0.matrix(n_qubits)
 
     if H.is_constant():
         h = tlist[1] - tlist[0]
 
         u = torch.matrix_exp(-1j * h * H.matrix(n_qubits=n_qubits))
-        print(u)
+        # print(u)
         # u = H.propagator(h).matrix()
         ut = u.transpose(-2, -1).conj()
-        print(ut)
+        # print(ut)
 
         # stepper = lambda _, __, rho: u @ rho @ ut
         
@@ -124,19 +124,21 @@ def evolve(H: HamiltonianOperator,
             knots = t + 0.5*h*(1 + _KNOTS)
 
             first_term = _first_term(H, knots, h)
-            second_term = _second_term(H.funcs, H.pauli_operators, knots, h)
+            # second_term = _second_term(H.funcs, H.pauli_operators, knots, h)
    
-            term = first_term - 0.5*second_term
+            term = first_term #- 0.5*second_term
 
-            u = torch.matrix_exp(-1j * term(n_qubits))
-            ut = u.transpose(-2, -1).conj()
+            # u = torch.matrix_exp(-1j * term.matrix(n_qubits))
+            u = term.propagator()
+            # ut = u.transpose(-2, -1).conj()
+            ut = u.H
             
-            return u @ rho @ ut
+            return u * rho * ut
 
     rho, obsvalues, states = es.solvediffeq(rho0, tlist, stepper, observables, store_intermediate)
 
     if batch_count > 1:
-        return rho, obsvalues, states.permute(1, 0, 2, 3) if store_intermediate else None
+        return rho, obsvalues, torch.stack(states).permute(1, 0, 2, 3) if store_intermediate else None
 
     return rho, {k: v[:1, :] for k, v in obsvalues.items()}, states if store_intermediate else None
 

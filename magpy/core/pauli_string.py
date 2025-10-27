@@ -228,6 +228,7 @@ class PauliString:
     
     @property
     def H(self) -> PauliString:
+        """The conjugate transpose of the operator."""
         result = PauliString()
         result._scale = self._scale.conjugate()
         result._qubits = dict(self._qubits)
@@ -263,6 +264,10 @@ class PauliString:
         """The constant coefficient of the Pauli string."""
 
         return self._scale
+    
+    @property
+    def shape(self) -> tuple[Number, Number]:
+        return (self.n_qubits**2, self.n_qubits**2)
     
     @property
     def target_qubit(self) -> int:

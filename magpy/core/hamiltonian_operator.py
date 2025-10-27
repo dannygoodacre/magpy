@@ -202,6 +202,7 @@ class HamiltonianOperator:
 
     @property
     def H(self) -> HamiltonianOperator:
+        """The conjugate transpose of the operator."""
         result = HamiltonianOperator()
         result._data = deepcopy(self._data)
 
@@ -222,7 +223,21 @@ class HamiltonianOperator:
         return max(op.n_qubits for op in self.pauli_operators())
     
     def coeffs(self, t: Tensor = None, unit_ops: bool = False) -> list:
-        """All coefficients in the operator."""
+        """All coefficients in the operator.
+
+        Parameters
+        ----------
+        t : Tensor, optional
+            The value at which to evaluate the coefficients, by default None
+        unit_ops : bool, optional
+            Whether to scale the coefficients such that the corresponding 
+            operators have unit coefficients, by default False
+
+        Returns
+        -------
+        list
+            The coefficients in the operator
+        """
 
         return [coeff for (coeff, _) in self.unpack(t, unit_ops)]
     
@@ -232,7 +247,7 @@ class HamiltonianOperator:
         for coeff in self._data:
             if not isinstance(coeff, Number | Tensor):
                 try:
-                    if not coeff.is_empty():
+                    if not coeff.is_empty:
                         return False
                     
                 except AttributeError:
@@ -256,7 +271,21 @@ class HamiltonianOperator:
         return False
 
     def matrix(self, t: Tensor = None, n_qubits: int = None) -> Tensor:
-        """The matrix representation of the operator, evaluated at t (where applicable), as an `n_qubit` operator."""
+        """The matrix representation of the operator, evaluated at `t` where
+        applicable, as an operator with `n_qubit` qubits.
+
+        Parameters
+        ----------
+        t : Tensor, optional
+            The value at which to evaluate the operator, by default None
+        n_qubits : int, optional
+            The number of qubits in the operator, by default None
+
+        Returns
+        -------
+        Tensor
+            The matrix representation of the operator
+        """
 
         if n_qubits is None:
             n_qubits = self.n_qubits
@@ -288,12 +317,27 @@ class HamiltonianOperator:
         return result.squeeze()
 
     def pauli_operators(self, unit_ops: bool = False, as_matrices: bool = False, n_qubits: int = None) -> list:
-        """All Pauli operators in the operator."""
+        """All Pauli operators in the operator.
+
+        Parameters
+        ----------
+        unit_ops : bool, optional
+            Whether to scale the coefficients such that the corresponding operators have unit coefficients, by default False
+        as_matrices : bool, optional
+            Whether to return the matrix representation of the operator, by default False
+        n_qubits : int, optional
+            The number of qubits in the operator, by default None
+
+        Returns
+        -------
+        list
+            The Pauli operators
+        """
 
         return [op for (_, op) in self.unpack(unit_ops=unit_ops, as_matrices=as_matrices, n_qubits=n_qubits)]
 
     def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128), t: Tensor = None) -> HamiltonianOperator:
-        """The exponential of `-i * h * H(t)`."""
+        """The exponential of `-i * h * H(t)`"""
 
         if t is None and not self.is_constant():
             raise ValueError('Operator is not constant. A value of t is required.')
@@ -323,6 +367,7 @@ class HamiltonianOperator:
             except AttributeError:
                 return op.propagator(h)
 
+    # TODO: What about NumPy interoperability?
     def qutip(self):
         """The operator as a `QObj` instance."""
 
@@ -344,7 +389,24 @@ class HamiltonianOperator:
         return [constant(constant_components)] + [[op.qutip(self.n_qubits), coeff] for (coeff, op) in time_dependent_components]
 
     def unpack(self, t: Tensor = None, unit_ops: bool = True, as_matrices: bool = False, n_qubits: int = None) -> list[tuple]:
-        """All coefficient-operator pairs in the operator."""
+        """All coefficient-operator pairs in the operator.
+
+        Parameters
+        ----------
+        t : Tensor, optional
+            The value at which to evaluate the operator, by default None
+        unit_ops : bool, optional
+            Whether to scale the coefficients such that the corresponding operators have unit coefficients, by default False
+        as_matrices : bool, optional
+            Whether to return the matrix representation of the operator, by default False
+        n_qubits : int, optional
+            The number of qubits in the operator, by default None
+
+        Returns
+        -------
+        list[tuple]
+            The coefficient-operator pairs
+        """
         
         result = []
 
