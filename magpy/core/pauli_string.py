@@ -126,9 +126,9 @@ class PauliString:
         
         if callable(other):
             try:
-                result._scale *= other.scale
+                result._scale *= other._scale
 
-                other.scale = 1
+                other._scale = 1
 
             except AttributeError:
                 pass

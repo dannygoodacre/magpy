@@ -4,7 +4,6 @@ from .core.linalg import frob, kron, timegrid, msqrt_herm, uhlmann
 from .core.pauli_string import PauliString, X, Y, Z, Id
 
 from .system import evolve
-from .system_alg import evolve_new
 
 __all__ = [
     'PauliString', 'X', 'Y', 'Z', 'Id', 

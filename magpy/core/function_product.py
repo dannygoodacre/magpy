@@ -96,6 +96,12 @@ class FunctionProduct:
         return result
 
     def __repr__(self):
+        if not self._funcs:
+            if isinstance(self._scale, Tensor):
+                return format_tensor(self._scale)
+            
+            return format_number(self._scale)
+
         result = ''
 
         if isinstance(self._scale, Tensor):

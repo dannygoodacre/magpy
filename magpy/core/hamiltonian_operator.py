@@ -143,7 +143,7 @@ class HamiltonianOperator:
 
         result._data = deepcopy(self._data)
         
-        return result
+        return -1 * result
 
     # TODO: Do we want this to be fully mathematical-looking? I.e. no `*`` and appending `(t)` to function names?
     # TODO: Do we want to group by X, Y, Z, Id?
@@ -193,6 +193,9 @@ class HamiltonianOperator:
     __rmul__ = __mul__
     
     __str__ = __repr__
+
+    def __sub__(self, other):
+        return self + -other
 
     @property
     def batch_count(self) -> int:
@@ -348,9 +351,6 @@ class HamiltonianOperator:
             try:
                 coeffs = torch.as_tensor(op.coeffs(unit_ops=True), dtype=torch.complex128)
                 pauli_ops = op.pauli_operators(unit_ops=True)
-                
-                print(coeffs)
-                print(pauli_ops)
 
                 norm = torch.norm(coeffs)
 

@@ -105,18 +105,10 @@ def evolve(H: HamiltonianOperator,
         h = tlist[1] - tlist[0]
 
         u = torch.matrix_exp(-1j * h * H.matrix(n_qubits=n_qubits))
-        # print(u)
-        # u = H.propagator(h).matrix()
-        ut = u.transpose(-2, -1).conj()
-        # print(ut)
 
-        # stepper = lambda _, __, rho: u @ rho @ ut
+        ut = u.transpose(-2, -1).conj()
         
         def stepper(_, __, rho):
-            # print('-------------------------------')
-            # print(f'rho: {rho}')
-            # print('-------------------------------')
-            
             return u @ rho @ ut
 
     else:
@@ -124,16 +116,11 @@ def evolve(H: HamiltonianOperator,
             knots = t + 0.5*h*(1 + _KNOTS)
 
             first_term = _first_term(H, knots, h)
-            # second_term = _second_term(H.funcs, H.pauli_operators, knots, h)
+            second_term = _second_term(H.coeffs(), H.pauli_operators(), knots, h)
    
-            term = first_term #- 0.5*second_term
+            u = (first_term - 0.5*second_term).propagator()
 
-            # u = torch.matrix_exp(-1j * term.matrix(n_qubits))
-            u = term.propagator()
-            # ut = u.transpose(-2, -1).conj()
-            ut = u.H
-            
-            return u * rho * ut
+            return u * rho * u.H
 
     rho, obsvalues, states = es.solvediffeq(rho0, tlist, stepper, observables, store_intermediate)
 

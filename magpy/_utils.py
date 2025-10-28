@@ -15,6 +15,9 @@ def conjugate(x: Number | Tensor):
 
 def format_number(n: Number) -> str:
     real, imag = n.real, n.imag
+    
+    if n == 1:
+        return '1'
 
     if real == 0 and imag == 0:
         return '0'
