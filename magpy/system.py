@@ -104,12 +104,12 @@ def evolve(H: HamiltonianOperator,
     if H.is_constant():
         h = tlist[1] - tlist[0]
 
-        u = torch.matrix_exp(-1j * h * H.matrix(n_qubits=n_qubits))
+        u = H.propagator(h)
 
-        ut = u.transpose(-2, -1).conj()
+        ut = u.H
         
-        def stepper(_, __, rho):
-            return u @ rho @ ut
+        def stepper(t, h, rho):
+            return u * rho * ut
 
     else:
         def stepper(t, h, rho):
@@ -117,15 +117,18 @@ def evolve(H: HamiltonianOperator,
 
             first_term = _first_term(H, knots, h)
             second_term = _second_term(H.coeffs(), H.pauli_operators(), knots, h)
-   
-            u = (first_term - 0.5*second_term).propagator()
+            
+            if second_term == 0:
+                u = first_term.propagator()
+            else:
+                u = (first_term - 0.5*second_term).propagator()
 
             return u * rho * u.H
 
     rho, obsvalues, states = es.solvediffeq(rho0, tlist, stepper, observables, store_intermediate)
 
     if batch_count > 1:
-        return rho, obsvalues, torch.stack(states).permute(1, 0, 2, 3) if store_intermediate else None
+        return rho, obsvalues, states if store_intermediate else None
 
     return rho, {k: v[:1, :] for k, v in obsvalues.items()}, states if store_intermediate else None
 
@@ -134,7 +137,8 @@ def _first_term(H: HamiltonianOperator, knots, h):
     result = 0
 
     for f, p in H.unpack(unit_ops=False):
-        result += torch.sum(_WEIGHTS * (f(knots) if callable(f) else f)) * p
+        foo = torch.sum(_WEIGHTS * (f(knots) if callable(f) else f))
+        result += foo * p
  
     return 0.5 * h * result
 

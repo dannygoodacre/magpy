@@ -15,9 +15,9 @@ class HamiltonianOperator:
         
         for coeff, pauli_string in pairs:
             try:
-                if coeff.scale != 1:
-                    pauli_string *= coeff.scale
-                    coeff.scale = 1
+                if coeff._scale != 1:
+                    pauli_string *= coeff._scale
+                    coeff._scale = 1
 
             except AttributeError:
                 if isinstance(coeff, Number):
@@ -224,7 +224,11 @@ class HamiltonianOperator:
         """The number of qubits upon which the operator acts."""
 
         return max(op.n_qubits for op in self.pauli_operators())
-    
+
+    @property
+    def shape(self) -> tuple[Number, Number]:
+        return (self.n_qubits**2, self.n_qubits**2)
+
     def coeffs(self, t: Tensor = None, unit_ops: bool = False) -> list:
         """All coefficients in the operator.
 
@@ -345,6 +349,7 @@ class HamiltonianOperator:
         if t is None and not self.is_constant():
             raise ValueError('Operator is not constant. A value of t is required.')
 
+        # TODO: Batch operators and multi-qubit operators.
         if self.n_qubits == 1:
             op = self(t)
 
@@ -355,17 +360,15 @@ class HamiltonianOperator:
                 norm = torch.norm(coeffs)
 
                 if norm == 0:
-                    # Pure identity Hamiltonian
                     return torch.exp(-1j * h * coeffs[0]) * mp.Id()
 
-                # Rebuild normalized Hamiltonian
                 H_normalized = sum(c * p for c, p in zip(coeffs / norm, pauli_ops))
 
                 return (torch.cos(h * norm) * mp.Id()
                         - 1j * torch.sin(h * norm) * H_normalized)
 
             except AttributeError:
-                return op.propagator(h)
+                return op.propagator(h, t)
 
     # TODO: What about NumPy interoperability?
     def qutip(self):

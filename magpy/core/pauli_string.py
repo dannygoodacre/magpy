@@ -120,7 +120,7 @@ class PauliString:
             return mp.HamiltonianOperator([1, result]) * other
 
         if isinstance(other, Number | torch.Tensor):
-            result._scale *= other
+            result._scale = result._scale * other
 
             return result
         
@@ -129,6 +129,9 @@ class PauliString:
                 result._scale *= other._scale
 
                 other._scale = 1
+                
+                if len(other._funcs) == 1:
+                    other = next(iter(other._funcs))
 
             except AttributeError:
                 pass
@@ -309,7 +312,7 @@ class PauliString:
 
         return scale * mp.kron(*qubits).type(torch.complex128)
 
-    def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> PauliString | mp.HamiltonianOperator:
+    def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128), t: int = None) -> PauliString | mp.HamiltonianOperator:
         """The exponential of `-i * h * P`."""
 
         v = self.scale * h
