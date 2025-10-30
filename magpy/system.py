@@ -125,7 +125,7 @@ def evolve(H: HamiltonianOperator,
 
             return u * rho * u.H
 
-    rho, obsvalues, states = es.solvediffeq(rho0, tlist, stepper, observables, store_intermediate)
+    rho, obsvalues, states = es.solvediffeq(torch.ones(H.batch_count)*rho0, tlist, stepper, observables, store_intermediate)
 
     if batch_count > 1:
         return rho, obsvalues, states if store_intermediate else None

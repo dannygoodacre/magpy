@@ -3,14 +3,15 @@ import torch
 import matplotlib.pyplot as plt
 
 H = torch.sin*X() + torch.tensor([1,2], dtype=torch.complex128)*Y() + torch.cos*Z()
-rho0 = X()
+rho0 = torch.tensor([1,1])*X()
 tlist = timegrid(0, 10, 0.01)
 n_qubits = 1
-observables = {'y': lambda u, t: frob(u.matrix(), Y().matrix(n_qubits)),
-               'x': lambda u, t: frob(u.matrix(), X().matrix(n_qubits)),
-               'z': lambda u, t: frob(u.matrix(), X().matrix(n_qubits))}
+observables = {'y': lambda u, t: frob(u.matrix(), Y().matrix()),
+               'x': lambda u, t: frob(u.matrix(), X().matrix()),
+               'z': lambda u, t: frob(u.matrix(), X().matrix())}
 
 _, obsvalue, _ = evolve(H, rho0, tlist, observables=observables)
+
 
 plt.plot(tlist, obsvalue['x'][0])
 plt.plot(tlist, obsvalue['x'][1])

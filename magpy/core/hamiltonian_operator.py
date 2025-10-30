@@ -227,7 +227,7 @@ class HamiltonianOperator:
 
     @property
     def shape(self) -> tuple[Number, Number]:
-        return (self.n_qubits**2, self.n_qubits**2)
+        return (self.batch_count, self.n_qubits**2, self.n_qubits**2)
 
     def coeffs(self, t: Tensor = None, unit_ops: bool = False) -> list:
         """All coefficients in the operator.
@@ -246,7 +246,22 @@ class HamiltonianOperator:
             The coefficients in the operator
         """
 
-        return [coeff for (coeff, _) in self.unpack(t, unit_ops)]
+        coeffs = [coeff if callable(coeff) or isinstance(coeff, Tensor) 
+                  else torch.tensor(coeff) 
+                  for (coeff, _) in self.unpack(t, unit_ops)]
+
+        # if (self.is_constant() and t is None) or self.batch_count == 1:
+        #     return coeffs
+
+        if self.batch_count == 1 or (t is None and not self.is_constant()):
+            return coeffs
+        
+        for i, coeff in enumerate(coeffs):
+            if coeff.ndim == 0 or coeff.shape[0] != self.batch_count:
+                coeffs[i] = coeff.repeat(self.batch_count)
+        
+        return coeffs
+            
     
     def is_constant(self) -> bool:
         """Whether the operator is time-independent."""
@@ -349,17 +364,18 @@ class HamiltonianOperator:
         if t is None and not self.is_constant():
             raise ValueError('Operator is not constant. A value of t is required.')
 
-        # TODO: Batch operators and multi-qubit operators.
+        # TODO: Multi-qubit operators.
         if self.n_qubits == 1:
             op = self(t)
 
             try:
-                coeffs = torch.as_tensor(op.coeffs(unit_ops=True), dtype=torch.complex128)
+                coeffs = torch.stack(op.coeffs(unit_ops=True)).to(torch.complex128)
+
                 pauli_ops = op.pauli_operators(unit_ops=True)
 
-                norm = torch.norm(coeffs)
+                norm = torch.norm(coeffs, dim=0)
 
-                if norm == 0:
+                if torch.all(norm == 0):
                     return torch.exp(-1j * h * coeffs[0]) * mp.Id()
 
                 H_normalized = sum(c * p for c, p in zip(coeffs / norm, pauli_ops))
@@ -423,7 +439,7 @@ class HamiltonianOperator:
                         value = coeff(t) if is_one or not unit_ops else scale * coeff(t)
 
                     else:
-                        value = coeff if not unit_ops else scale * coeff(t)
+                        value = coeff if not unit_ops else scale * coeff
 
                 else:
                     if callable(coeff):

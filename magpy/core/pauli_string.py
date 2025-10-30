@@ -227,7 +227,10 @@ class PauliString:
     def batch_count(self) -> int:
         """The number of parallel operators represented by the Pauli string."""
 
-        return self._scale.shape[0] if isinstance(self._scale, torch.Tensor) else 1
+        try:
+            return self._scale.shape[0] if isinstance(self._scale, torch.Tensor) else 1
+        except IndexError:
+            return 1
     
     @property
     def H(self) -> PauliString:
@@ -270,7 +273,7 @@ class PauliString:
     
     @property
     def shape(self) -> tuple[Number, Number]:
-        return (self.n_qubits**2, self.n_qubits**2)
+        return (self.batch_count, self.n_qubits**2, self.n_qubits**2)
     
     @property
     def target_qubit(self) -> int:
