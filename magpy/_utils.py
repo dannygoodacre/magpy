@@ -1,9 +1,10 @@
 from numbers import Number
 
+import torch
 from torch import Tensor
 
 from ._context import get_print_precision
-
+from ._types import Scalar
 
 def conjugate(x: Number | Tensor):
     try:
@@ -11,6 +12,7 @@ def conjugate(x: Number | Tensor):
 
     except AttributeError:
         return x.conj()
+
 
 def format_number(n: Number | Tensor) -> str:
     if isinstance(n, Number):
@@ -35,3 +37,13 @@ def format_number(n: Number | Tensor) -> str:
             return format_number(n.item())
 
         return '(' + ', '.join(format_number(x) for x in n.tolist()) + ')'
+
+
+def tensorize(coeff: Scalar) -> Tensor:
+    if isinstance(coeff, Tensor):
+        return coeff
+
+    if isinstance(coeff, Number):
+        return torch.tensor(coeff)
+
+    return torch.as_tensor(coeff)

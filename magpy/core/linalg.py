@@ -81,7 +81,6 @@ def frob(a: Tensor, b: Tensor) -> Tensor:
         return torch.sum(torch.conj(a) * b)
 
 
-# TODO: Profile this against other approaches: balanced tree, reshape, etc.
 def kron(*args: Tensor) -> Tensor:
     """The Kronecker product."""
 

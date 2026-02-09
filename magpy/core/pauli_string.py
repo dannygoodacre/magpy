@@ -1,5 +1,3 @@
-from functools import reduce
-from numbers import Number
 from typing import TYPE_CHECKING
 
 import torch
@@ -7,7 +5,8 @@ from torch import Tensor
 
 from .function_product import FunctionProduct
 from .linalg import kron
-from .._utils import format_number
+from .._types import Scalar
+from .._utils import format_number, tensorize
 
 if TYPE_CHECKING:
     from .hamiltonian_operator import HamiltonianOperator
@@ -36,10 +35,11 @@ class PauliString:
 
     _I_MATRIX = torch.eye(2, dtype=torch.complex128)
 
-    def __init__(self, x_mask: int, z_mask: int, coeff: complex | torch.Tensor = 1.0, n_qubits: int = None):
+    def __init__(self, x_mask: int, z_mask: int, coeff: complex | Tensor = 1.0, n_qubits: int = None):
         self._x_mask = x_mask
         self._z_mask = z_mask
-        self._coeff = coeff
+
+        self._coeff = tensorize(coeff)
 
         if n_qubits is None:
             self._n_qubits = max(x_mask.bit_length(), z_mask.bit_length(), 1)
@@ -70,13 +70,8 @@ class PauliString:
             and self._n_qubits == other._n_qubits
 
     def __mul__(self, other):
-        if isinstance(other, Number | torch.Tensor):
-            coeff = self._coeff * other
-
-            return PauliString(self._x_mask, self._z_mask, coeff)
-
-        if callable(other):
-            coeff = other if self._coeff == 1 else FunctionProduct(self._coeff, other)
+        if isinstance(other, Scalar):
+            coeff = self._coeff * tensorize(other)
 
             return PauliString(self._x_mask, self._z_mask, coeff)
 
@@ -97,13 +92,18 @@ class PauliString:
         if isinstance(other, HamiltonianOperator):
             return other.__rmul__(self)
 
+        if callable(other):
+            coeff = other if self._coeff == 1 else FunctionProduct(self._coeff, other)
+
+            return PauliString(self._x_mask, self._z_mask, coeff)
+
         return NotImplemented
 
     def __neg__(self):
         return self.__mul__(-1)
 
     def __rmul__(self, other):
-        if isinstance(other, Number | torch.Tensor) or callable(other):
+        if isinstance(other, Scalar) or callable(other):
             return self.__mul__(other)
 
         from .hamiltonian_operator import HamiltonianOperator
@@ -166,16 +166,18 @@ class PauliString:
     def as_unit_operator(self) -> PauliString:
         return PauliString(self._x_mask, self._z_mask, n_qubits = self._n_qubits)
 
-    def matrix(self, n_qubits: int = None) -> torch.Tensor:
+    def matrix(self, n_qubits: int = None) -> Tensor:
         if n_qubits is None:
             n_qubits = self.n_qubits
 
-        ops = []
+        matrix = kron(*[self.__single_qubit_matrix(i) for i in range(n_qubits)])
 
-        for i in range(n_qubits):
-            ops.append(self.__single_qubit_matrix(i))
+        scale = torch.as_tensor(self._coeff)
 
-        return self._coeff * reduce(torch.kron, ops)
+        if scale.ndim > 0:
+            scale = scale.view(*scale.shape, 1, 1)
+
+        return scale * matrix
 
     def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128), t: Tensor = None) -> PauliString | HamiltonianOperator:
         # expm( -i * h * H(t))
@@ -196,7 +198,7 @@ class PauliString:
         )
 
     @property
-    def coeff(self) -> int | torch.Tensor:
+    def coeff(self) -> int | Tensor:
         return self._coeff
 
     @property
@@ -207,7 +209,7 @@ class PauliString:
     def n_qubits(self) -> int:
         return max(self._x_mask.bit_length(), self._z_mask.bit_length(), 1)
 
-    def __single_qubit_matrix(self, i: int) -> torch.Tensor:
+    def __single_qubit_matrix(self, i: int) -> Tensor:
         x = (self._x_mask >> i) & 1
         z = (self._z_mask >> i) & 1
 
@@ -223,7 +225,7 @@ class PauliString:
         return self._I_MATRIX
 
     @staticmethod
-    def from_label(label: str, coeff: complex | torch.Tensor = 1.0):
+    def from_label(label: str, coeff: complex | Tensor = 1.0):
         x_mask = 0
         z_mask = 0
 
