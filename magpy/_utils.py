@@ -12,27 +12,26 @@ def conjugate(x: Number | Tensor):
     except AttributeError:
         return x.conj()
 
+def format_number(n: Number | Tensor) -> str:
+    if isinstance(n, Number):
+        real, imag = n.real, n.imag
 
-def format_number(n: Number) -> str:
-    real, imag = n.real, n.imag
-    
-    if n == 1:
-        return '1'
+        if n == 1:
+            return '1'
 
-    if real == 0 and imag == 0:
-        return '0'
-    
-    if real == 0:
-        return f'{imag:.{get_print_precision()}g}j'
+        if real == 0 and imag == 0:
+            return '0'
 
-    if imag == 0:
-        return f'{real:.{get_print_precision()}g}'
-    
-    return f'{n:.{get_print_precision()}g}'
+        if real == 0:
+            return f'{imag:.{get_print_precision()}g}j'
 
+        if imag == 0:
+            return f'{real:.{get_print_precision()}g}'
 
-def format_tensor(tensor: Tensor) -> str:
-    if tensor.numel() == 1:
-        return format_number(tensor.item())
+        return f'({n:.{get_print_precision()}g})'
 
-    return '(' + ', '.join(format_number(n) for n in tensor.tolist()) + ')'
+    if isinstance(n, Tensor):
+        if n.numel() == 1:
+            return format_number(n.item())
+
+        return '(' + ', '.join(format_number(x) for x in n.tolist()) + ')'

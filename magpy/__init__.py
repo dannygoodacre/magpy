@@ -1,15 +1,15 @@
 from .core.function_product import FunctionProduct
 from .core.hamiltonian_operator import HamiltonianOperator
-from .core.linalg import frob, kron, timegrid, msqrt_herm, uhlmann
-from .core.pauli_string import PauliString, X, Y, Z, Id
+from .core.linalg import propagator, frob, kron, timegrid, msqrt_herm, uhlmann
+from .core.pauli_string import PauliString, X, Y, Z, I
 
 from .system import evolve
 
 __all__ = [
-    'PauliString', 'X', 'Y', 'Z', 'Id', 
-    'FunctionProduct', 
-    'HamiltonianOperator', 
-    'frob', 'kron', 'msqrt_herm', 'timegrid', 'uhlmann'
+    'PauliString', 'X', 'Y', 'Z', 'Id',
+    'FunctionProduct',
+    'HamiltonianOperator',
+    'expm', 'frob', 'kron', 'msqrt_herm', 'timegrid', 'uhlmann'
     'evolve'
 ]
 
@@ -42,10 +42,15 @@ def set_print_precision(precision: int):
     precision : int
         Number of digits
     """
-    
+
     from torch import set_printoptions
     from ._context import _CONTEXT
 
     _CONTEXT.print_precision = precision
 
     set_printoptions(precision)
+
+def print_identities(arg: bool = True):
+    from._context import _CONTEXT
+
+    _CONTEXT.print_identities = arg

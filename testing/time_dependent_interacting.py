@@ -1,25 +1,24 @@
 from magpy import X, Y, evolve, timegrid, frob, Z
-import torch
+from torch import complex128, sin, tensor
 import matplotlib.pyplot as plt
 
-H = torch.sin*X() + torch.tensor([1,2], dtype=torch.complex128)*Y() + torch.cos*Z()
-print(H)
-print(H.batch_count)
-print(H.n_qubits)
-# exit(0)
-
-rho0 = torch.tensor([1,1])*X()
-tlist = timegrid(0, 10, 0.01)
+H = sin*X() + Y() + Z(1,2)
+rho0 = X()
+tlist= timegrid(0, 10, 0.01)
 n_qubits = 1
 observables = {'y': lambda u, t: frob(u.matrix(), Y().matrix()),
                'x': lambda u, t: frob(u.matrix(), X().matrix()),
-               'z': lambda u, t: frob(u.matrix(), X().matrix())}
+               'z': lambda u, t: frob(u.matrix(), Z().matrix())}
 
 _, obsvalue, _ = evolve(H, rho0, tlist, observables=observables)
 
-
 plt.plot(tlist, obsvalue['x'][0])
-plt.plot(tlist, obsvalue['x'][1])
 plt.plot(tlist, obsvalue['y'][0])
+
+plt.plot(tlist, obsvalue['x'][1])
 plt.plot(tlist, obsvalue['y'][1])
+
+plt.plot(tlist, obsvalue['z'][1])
+plt.plot(tlist, obsvalue['z'][1])
+
 plt.show()

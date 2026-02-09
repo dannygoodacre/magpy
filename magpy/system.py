@@ -20,7 +20,7 @@ from typing import Callable
 import torch
 import expsolve as es
 
-from .core import PauliString, Id, HamiltonianOperator
+from .core import PauliString, I, HamiltonianOperator
 from ._context import get_device
 
 
@@ -35,23 +35,23 @@ def _update_device():
     _WEIGHTS = _WEIGHTS.to(get_device())
 
 
-def evolve(H: HamiltonianOperator, 
-           rho0: PauliString, 
-           tlist: torch.Tensor, 
+def evolve(H: HamiltonianOperator,
+           rho0: PauliString,
+           tlist: torch.Tensor,
            n_qubits: int = None,
            observables: dict[str, Callable[[torch.Tensor, Number], torch.Tensor]] = {},
            store_intermediate: bool = False) -> tuple[torch.Tensor, dict[str, torch.Tensor], torch.Tensor | None]:
     """Liouville-von Neumann evolution of the density matrix under a given Hamiltonian.
-    
+
     TODO: Update this docstring.
-    
+
     Evolve the density matrix `rho0` using the Hamiltonian `H`.
 
     The result is the density matrix evaluated at each time point in `tlist`.
 
-    When the Hamiltonian describes a batch system, the respective system's result is 
+    When the Hamiltonian describes a batch system, the respective system's result is
     accessed by indexing the result accordingly.
-    
+
     The number of qubits `n_qubits` determines the number of qubits to use in each
     batch of the simulation. By default, MagPy will infer this value.
 
@@ -63,7 +63,7 @@ def evolve(H: HamiltonianOperator,
     >>> states = evolve(H, rho0, tlist)
     >>> y1 = frobenius(states[0], Y().matrix())
     >>> y2 = frobenius(states[1], Y().matrix())
-        
+
     >>> H = torch.cos*Y() + torch.sin*X(2) + Y()
     >>> rho0 = X(2)
     >>> tlist = timegrid(0, 10, 0.01)
@@ -95,7 +95,7 @@ def evolve(H: HamiltonianOperator,
         n_qubits = H.n_qubits
 
     batch_count = H.batch_count
-        
+
     # if batch_count > 1:
     #     rho0 = torch.stack([rho0.matrix(n_qubits)] * batch_count)
     # else:
@@ -107,7 +107,7 @@ def evolve(H: HamiltonianOperator,
         u = H.propagator(h)
 
         ut = u.H
-        
+
         def stepper(t, h, rho):
             return u * rho * ut
 
@@ -117,11 +117,13 @@ def evolve(H: HamiltonianOperator,
 
             first_term = _first_term(H, knots, h)
             second_term = _second_term(H.coeffs(), H.pauli_operators(), knots, h)
-            
+
             if second_term == 0:
                 u = first_term.propagator()
             else:
-                u = (first_term - 0.5*second_term).propagator()
+                foo = first_term - 0.5*second_term
+                print(foo)
+                u = foo.propagator()
 
             return u * rho * u.H
 
@@ -139,25 +141,25 @@ def _first_term(H: HamiltonianOperator, knots, h):
     for f, p in H.unpack(unit_ops=False):
         foo = torch.sum(_WEIGHTS * (f(knots) if callable(f) else f))
         result += foo * p
- 
+
     return 0.5 * h * result
 
 
 def _second_term(funcs, ops, knots, h):
     result = 0
-    
+
     n = len(funcs)
 
     for i in range(n):
         for j in range(i + 1, n):
-            if ops[i] == Id() or ops[j] == Id():
+            if ops[i] == I() or ops[j] == I():
                 continue
 
             if callable(funcs[i]):
                 fi0 = funcs[i](knots[0])
                 fi1 = funcs[i](knots[1])
                 fi2 = funcs[i](knots[2])
-            
+
             else:
                 fi0 = funcs[i]
                 fi1 = funcs[i]
@@ -167,7 +169,7 @@ def _second_term(funcs, ops, knots, h):
                 fj0 = funcs[j](knots[0])
                 fj1 = funcs[j](knots[1])
                 fj2 = funcs[j](knots[2])
-            
+
             else:
                 fj0 = funcs[j]
                 fj1 = funcs[j]
@@ -176,7 +178,7 @@ def _second_term(funcs, ops, knots, h):
             coeff = 2*(fi0*fj1 - fi1*fj0) + (fi0*fj2 - fi2*fj0) + 2*(fi1*fj2 - fi2*fj1)
 
             op = ops[i]*ops[j] - ops[j]*ops[i]
-            
+
             result += coeff * op
 
     return (sqrt(15) / 54) * h**2 * result
