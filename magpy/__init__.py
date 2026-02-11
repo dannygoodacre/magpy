@@ -1,6 +1,6 @@
 from .core.function_product import FunctionProduct
-from .core.hamiltonian_operator import HamiltonianOperator
-from .core.linalg import propagator, frob, kron, timegrid, msqrt_herm, uhlmann
+from .core.hamiltonian_operator import HamOp
+from .core.linalg import frob, kron, timegrid, msqrt_herm, uhlmann
 from .core.pauli_string import PauliString, X, Y, Z, I
 
 from .system import evolve
@@ -8,7 +8,7 @@ from .system import evolve
 __all__ = [
     'PauliString', 'X', 'Y', 'Z', 'Id',
     'FunctionProduct',
-    'HamiltonianOperator',
+    'HamOp',
     'expm', 'frob', 'kron', 'msqrt_herm', 'timegrid', 'uhlmann'
     'evolve'
 ]
@@ -50,7 +50,7 @@ def set_print_precision(precision: int):
 
     set_printoptions(precision)
 
-def print_identities(arg: bool = True):
+def set_print_identities(arg: bool):
     from._context import _CONTEXT
 
     _CONTEXT.print_identities = arg

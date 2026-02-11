@@ -20,7 +20,7 @@ from typing import Callable
 import torch
 import expsolve as es
 
-from .core import PauliString, I, HamiltonianOperator
+from .core import PauliString, I, HamOp
 from ._context import get_device
 
 
@@ -35,7 +35,7 @@ def _update_device():
     _WEIGHTS = _WEIGHTS.to(get_device())
 
 
-def evolve(H: HamiltonianOperator,
+def evolve(H: HamOp,
            rho0: PauliString,
            tlist: torch.Tensor,
            n_qubits: int = None,
@@ -89,7 +89,7 @@ def evolve(H: HamiltonianOperator,
 
     # TODO: Can we optimise for PS instead of this?
     if isinstance(H, PauliString):
-        H = HamiltonianOperator([1, H])
+        H = HamOp([1, H])
 
     if n_qubits is None:
         n_qubits = H.n_qubits
@@ -135,7 +135,7 @@ def evolve(H: HamiltonianOperator,
     return rho, {k: v[:1, :] for k, v in obsvalues.items()}, states if store_intermediate else None
 
 
-def _first_term(H: HamiltonianOperator, knots, h):
+def _first_term(H: HamOp, knots, h):
     result = 0
 
     for f, p in H.unpack(unit_ops=False):

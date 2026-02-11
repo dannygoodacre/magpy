@@ -3,6 +3,7 @@ from numbers import Number
 import torch
 from torch import Tensor
 
+from .core.pauli_string import PauliString
 from ._context import get_print_precision
 from ._types import Scalar
 
@@ -12,6 +13,15 @@ def conjugate(x: Number | Tensor):
 
     except AttributeError:
         return x.conj()
+
+
+def commutes(a: PauliString, b: PauliString) -> bool:
+    # TODO: Document
+    # symplectic inner product: (Z1 & X2) ^ (X1 & Z2)
+
+    check = (a._z_mask & b._x_mask) ^ (a._x_mask & b._z_mask)
+
+    return check.bit_count() % 2 == 0
 
 
 def format_number(n: Number | Tensor) -> str:

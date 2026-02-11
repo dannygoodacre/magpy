@@ -12,8 +12,8 @@ H = FP()*10*sin*X() + sqrt*Y()
 rho0 = Y()
 tlist = timegrid(0, 10, 0.5**8)
 
-observables = {'x': lambda u, _: frob(u.matrix(), X().matrix()),
-               'y': lambda u, _: frob(u.matrix(), Y().matrix())}
+observables = {'x': lambda u, _: frob(u.matrix(), X().tensor()),
+               'y': lambda u, _: frob(u.matrix(), Y().tensor())}
 
 _, obsvalues, _ = evolve(H, rho0, tlist, observables=observables)
 

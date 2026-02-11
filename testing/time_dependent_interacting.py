@@ -6,9 +6,9 @@ H = sin*X() + Y() + Z(1,2)
 rho0 = X()
 tlist= timegrid(0, 10, 0.01)
 n_qubits = 1
-observables = {'y': lambda u, t: frob(u.matrix(), Y().matrix()),
-               'x': lambda u, t: frob(u.matrix(), X().matrix()),
-               'z': lambda u, t: frob(u.matrix(), Z().matrix())}
+observables = {'y': lambda u, t: frob(u.matrix(), Y().tensor()),
+               'x': lambda u, t: frob(u.matrix(), X().tensor()),
+               'z': lambda u, t: frob(u.matrix(), Z().tensor())}
 
 _, obsvalue, _ = evolve(H, rho0, tlist, observables=observables)
 

@@ -18,8 +18,8 @@ rho0 = mp.Y()
 tlist = mp.timegrid(0, 10, 0.5**6)
 
 n_qubits = 1
-observables = {'y': lambda u, _: mp.frob(u.matrix(n_qubits=n_qubits), mp.Y().matrix(n_qubits=n_qubits)),
-               'x': lambda u, _: mp.frob(u.matrix(n_qubits=n_qubits), mp.X().matrix(n_qubits=n_qubits))}
+observables = {'y': lambda u, _: mp.frob(u.matrix(n_qubits=n_qubits), mp.Y().tensor(n_qubits=n_qubits)),
+               'x': lambda u, _: mp.frob(u.matrix(n_qubits=n_qubits), mp.X().tensor(n_qubits=n_qubits))}
 
 rho, obsvalues, states = mp.evolve(H, rho0, tlist, n_qubits, observables, True)
 

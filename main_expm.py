@@ -1,6 +1,6 @@
 import magpy as mp
 from numbers import Number
-from magpy import PauliString, HamiltonianOperator as HOp
+from magpy import PauliString, HamOp as HOp
 import torch
 from torch import Tensor
 
