@@ -4,13 +4,14 @@ from .core.linalg import frob, kron, timegrid, msqrt_herm, uhlmann
 from .core.pauli_string import PauliString, X, Y, Z, I
 
 from .system import evolve
+from .new_system import new_evolve
 
 __all__ = [
     'PauliString', 'X', 'Y', 'Z', 'Id',
     'FunctionProduct',
     'HamOp',
-    'expm', 'frob', 'kron', 'msqrt_herm', 'timegrid', 'uhlmann'
-    'evolve'
+    'expm', 'frob', 'kron', 'msqrt_herm', 'timegrid', 'uhlmann',
+    'evolve', 'new_evolve'
 ]
 
 def set_default_device(device: str):

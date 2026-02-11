@@ -30,7 +30,9 @@ class HamOp:
                     self.__add_term(pauli_string, coeff)
 
     def __add__(self, other: PauliString | HamOp):
-        return HamOp(self, other)
+        result = HamOp(self, other)
+
+        return result.simplify()
 
     def __call__(self, *args, **kwargs):
         result = HamOp()
@@ -66,6 +68,9 @@ class HamOp:
 
     def __pow__(self, n: int):
         return self.power(n)
+
+    def __radd__(self, other):
+        return self.__add__(other)
 
     def __rmul__(self, other):
         if isinstance(other, Scalar):
@@ -181,6 +186,13 @@ class HamOp:
 
         return result
 
+    def simplify(self) -> HamOp | PauliString:
+        if len(self._data) == 1:
+            pauli_unit, coeff = next(iter(self._data.items()))
+
+            return coeff * pauli_unit
+
+        return self
 
     def tensor(self, n_qubits: int = None) -> Tensor:
         if n_qubits is None:
@@ -209,6 +221,19 @@ class HamOp:
         return result
 
     @property
+    def batch_count(self) -> int:
+        batch = 1
+
+        for coeff in self._data.values():
+            if isinstance(coeff, FunctionProduct):
+                batch = max(batch, coeff._scale)
+
+            elif isinstance(coeff, Tensor):
+                batch = max(batch, coeff.shape[0])
+
+        return batch
+
+    @property
     def is_commuting(self) -> bool:
         # TODO: This only makes sense for constant HamOps.
 
@@ -224,6 +249,19 @@ class HamOp:
     @property
     def is_constant(self) -> bool:
         return not any(callable(coeff) for coeff in self._data.values())
+
+    @property
+    def H(self) -> HamOp:
+        result = None
+        for pauli_unit, coeff in self._data.items():
+            if result is None:
+                result = pauli_unit * coeff.conj()
+
+                continue
+
+            result += pauli_unit * coeff.conj()
+
+        return result
 
     @property
     def n_qubits(self) -> int:

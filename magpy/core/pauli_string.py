@@ -50,7 +50,9 @@ class PauliString:
     def __add__(self, other: PauliString | HamOp) -> HamOp:
         from .hamiltonian_operator import HamOp
 
-        return HamOp(self, other)
+        result = HamOp(self, other)
+
+        return result.simplify()
 
     def __copy__(self):
         return self.copy()
@@ -200,8 +202,23 @@ class PauliString:
         return self._coeff
 
     @property
+    def batch_count(self) -> int:
+        try:
+            return self.coeff.shape[0] if isinstance(self.coeff, Tensor) else 1
+        except IndexError:
+            return 1
+
+    @property
+    def H(self) -> PauliString:
+        return PauliString(self._x_mask, self._z_mask, self._coeff.conj())
+
+    @property
     def n_qubits(self) -> int:
         return max(self._x_mask.bit_length(), self._z_mask.bit_length(), 1)
+
+    @property
+    def shape(self) -> tuple[int, int, int]:
+        return (self.batch_count, self.n_qubits**2, self.n_qubits**2)
 
     def __single_qubit_matrix(self, i: int) -> Tensor:
         x = (self._x_mask >> i) & 1
