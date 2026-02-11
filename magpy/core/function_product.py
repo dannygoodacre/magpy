@@ -43,19 +43,24 @@ class FunctionProduct:
         return self._scale == other._scale and self._functions == other._functions
 
     def __mul__(self, other):
-        if hasattr(other, '__rmul__') and not isinstance(other, (Number, Tensor, FunctionProduct)):
+        from .pauli_string import PauliString
+        from .hamiltonian_operator import HamOp
+
+        if isinstance(other, (PauliString, HamOp)):
             return other.__rmul__(self)
 
         result = FunctionProduct(self)
 
         if isinstance(other, FunctionProduct):
             result._scale *= other._scale
+            for f, p in other._functions.items():
+                result._functions[f] = result._functions.get(f, 0) + p
 
-            for f, power in other._functions.items():
-                result._functions[f] = result._functions.get(f, 0) + power
+        elif isinstance(other, (int, float, complex, Tensor, list, tuple)):
+            scale_val = torch.as_tensor(other, dtype=torch.complex128) \
+                if isinstance(other, (list, tuple)) else other
 
-        elif isinstance(other, (Number, Tensor)):
-            result._scale *= other
+            result._scale *= scale_val
 
         elif callable(other):
             result._functions[other] = result._functions.get(other, 0) + 1
@@ -64,7 +69,6 @@ class FunctionProduct:
             return NotImplemented
 
         return result
-
 
     def __neg__(self):
         result = FunctionProduct()
@@ -75,7 +79,7 @@ class FunctionProduct:
 
         return result
 
-    def __repr__(self):
+    def __str__(self):
         if not self._functions:
             return format_number(self._scale)
 
@@ -89,6 +93,7 @@ class FunctionProduct:
             name = getattr(f, '__name__', 'f')
 
             if name == '<lambda>':
+                # TODO: Find a better way to handle this. I don't like it.
                 name = 'λ'
 
             parts.append(f'{name}^{power}' if power > 1 else name)
@@ -96,8 +101,6 @@ class FunctionProduct:
         return '*'.join(parts)
 
     __rmul__ = __mul__
-
-    __str__ = __repr__
 
     @property
     def is_empty(self) -> bool:

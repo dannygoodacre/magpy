@@ -14,6 +14,7 @@ from .._utils import commutes, format_number, tensorize
 class HamOp:
     def __init__(self, *args):
         self._data = {}
+        self._n_qubits = 0
 
         for arg in args:
             if isinstance(arg, tuple):
@@ -23,6 +24,10 @@ class HamOp:
 
             elif isinstance(arg, PauliString):
                 self.__add_term(arg)
+
+            elif isinstance(arg, HamOp):
+                for pauli_string, coeff in arg._data.items():
+                    self.__add_term(pauli_string, coeff)
 
     def __add__(self, other: PauliString | HamOp):
         return HamOp(self, other)
@@ -158,6 +163,25 @@ class HamOp:
 
         return result
 
+    def propagator(self, h: float = 1.0) -> HamOp:
+        """expm(-i * h * H), for constant, commuting H."""
+
+        # TODO: Quadrature for the rest?
+
+        if not self.is_constant or not self.is_commuting:
+            return NotImplemented
+
+        result = None
+
+        for pauli_string, coeff in self._data.items():
+            if result is None:
+                result = (coeff * pauli_string).propagator(h)
+
+            result *= (coeff * pauli_string).propagator(h)
+
+        return result
+
+
     def tensor(self, n_qubits: int = None) -> Tensor:
         if n_qubits is None:
             n_qubits = self.n_qubits
@@ -186,6 +210,8 @@ class HamOp:
 
     @property
     def is_commuting(self) -> bool:
+        # TODO: This only makes sense for constant HamOps.
+
         operators = list(self._data.keys())
 
         for i in range(len(operators)):

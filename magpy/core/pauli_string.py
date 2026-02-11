@@ -139,8 +139,11 @@ class PauliString:
 
         operator_string = '*'.join(label) if label else 'I'
 
-        if isinstance(self._coeff, torch.Tensor) and torch.all(self._coeff == 1):
-            return operator_string
+        if isinstance(self._coeff, torch.Tensor):
+            if torch.all(self._coeff == 1):
+                return operator_string
+
+            return f"{format_number(self._coeff)}*{operator_string}"
 
         if self._coeff == 1:
             return operator_string
@@ -185,24 +188,12 @@ class PauliString:
 
         return scale * matrix
 
-    # TODO: Verify this code.
-    # def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128), t: Tensor = None) -> PauliString | HamiltonianOperator:
-    #     # expm( -i * h * H(t))
+    def propagator(self, h: float = 1.0) -> HamOp:
+        """(t: expm(-i * h * t)"""
 
-    #     if self.is_constant:
-    #         v = torch.as_tensor(self._coeff * h)
+        v = h * self._coeff
 
-    #         return torch.cos(v)*I() - 1j*torch.sin(v)*self.as_unit_operator()
-
-    #     s = FunctionProduct() * h * (lambda *args: torch.sin(self._coeff(*args)))
-    #     c = FunctionProduct() * h * (lambda *args: torch.cos(self._coeff(*args)))
-
-    #     from .hamiltonian_operator import HamiltonianOperator
-
-    #     return HamiltonianOperator(
-    #         (c, I()),
-    #         (-1j * s, self.as_unit_operator())
-    #     )
+        return torch.cos(v)*I() - 1j*torch.sin(v)*self.as_unit_operator()
 
     @property
     def coeff(self) -> Tensor:
@@ -253,11 +244,11 @@ class PauliString:
         x1, z1 = a._x_mask, a._z_mask
         x2, z2 = b._x_mask, b._z_mask
 
-        num_qubits = max(x1.bit_length(), z1.bit_length(), x2.bit_length(), z2.bit_length())
+        n_qubits = max(x1.bit_length(), z1.bit_length(), x2.bit_length(), z2.bit_length())
 
         p = 0
 
-        for i in range(num_qubits):
+        for i in range(n_qubits):
             b1_x = (x1 >> i) & 1
             b1_z = (z1 >> i) & 1
             b2_x = (x2 >> i) & 1

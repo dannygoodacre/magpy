@@ -51,9 +51,9 @@ def format_number(n: Number | Tensor) -> str:
 
 def tensorize(coeff: Scalar) -> Tensor:
     if isinstance(coeff, Tensor):
-        return coeff
+        return coeff.to(torch.complex128)
 
     if isinstance(coeff, Number):
-        return torch.tensor(coeff)
+        return torch.tensor(coeff, dtype=torch.complex128)
 
-    return torch.as_tensor(coeff)
+    return torch.as_tensor(coeff, dtype=torch.complex128)
