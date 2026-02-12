@@ -24,6 +24,7 @@ import expsolve as es
 from .core import PauliString, I, HamOp
 from ._context import get_device
 
+
 _KNOTS = torch.tensor([-sqrt(3/5), 0, sqrt(3/5)], dtype=torch.complex128)
 _WEIGHTS = torch.tensor([5/9, 8/9, 5/9])
 
@@ -33,6 +34,7 @@ def _update_device():
 
     _KNOTS = _KNOTS.to(get_device())
     _WEIGHTS = _WEIGHTS.to(get_device())
+
 
 def new_evolve(H: PauliString | HamOp,
            rho0: PauliString,
@@ -44,14 +46,23 @@ def new_evolve(H: PauliString | HamOp,
     batch_count = H.batch_count
 
     if isinstance(H, PauliString):
-        h = tlist[1] - tlist[0]
+        stepper = _pauli_string_stepper(H, tlist[1] - tlist[0])
 
-        u = H.propagator(h)
+    if not H.is_constant():
+        if H.is_completely_independent():
+            def stepper(t, h, rho):
+                knots = t + 0.5*h*(1 + _KNOTS)
 
-        ut = u.H
+                props = [first_term_pauli(unit_pauli, coeff(knots), h).propagator(h) for unit_pauli, coeff in H._data.items()]
 
-        def stepper(t, h, rho):
-            return u * rho * ut
+                propagator = props[0]
+
+                for prop in props[1:]:
+                    propagator *= prop
+
+                pt = propagator.H
+
+                return propagator * rho * pt
 
     rho, obsvalues, states = es.solvediffeq(torch.ones(batch_count) * rho0,
                                             tlist,
@@ -63,3 +74,44 @@ def new_evolve(H: PauliString | HamOp,
         return rho, obsvalues, states if store_intermediate else None
 
     return rho, {k: v[:1, :] for k, v in obsvalues.items()}, states if store_intermediate else None
+
+
+def _pauli_string_stepper(P: PauliString, h: Tensor):
+    u = P.propagator(h)
+
+    ut = u.H
+
+    return (lambda t, h, rho: u * rho * ut)
+
+
+def first_term_pauli(pauli_unit: PauliString, coeff, h):
+    return 0.5 * h * torch.sum(_WEIGHTS * coeff) * pauli_unit
+
+
+def first_term(H: HamOp, knots, h):
+    result = None
+
+    for pauli_unit, coeff in H._data.items():
+        if result is None:
+            result = __intermediate_first_term(pauli_unit, coeff, knots)
+
+        else:
+            result += __intermediate_first_term(pauli_unit, coeff, knots)
+
+    return 0.5 * h * result
+
+
+def second_term(coeffs, unit_paulis, knots, h):
+    result = None
+
+    n = len(coeffs)
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            if unit_paulis[i] == I() or unit_paulis[j] == I():
+                continue
+
+
+
+def __intermediate_first_term(pauli_unit: PauliString, coeff, knots):
+    return torch.sum(_WEIGHTS * (coeff(knots) if callable(coeff) else coeff)) * pauli_unit

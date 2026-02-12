@@ -6,7 +6,12 @@ rho0 = X()
 tlist = timegrid(0, 5, 0.01)
 observables = {'x': lambda u, t: frob(u.tensor(), X().tensor())}
 
-_, obsvalue, _ = new_evolve(H, rho0, tlist, observables=observables)
+_, obsvalue, intermediate = new_evolve(H, rho0, tlist, observables=observables, store_intermediate=True)
+
+print(len(intermediate))
+
+for i in range(10):
+    print(intermediate[i])
 
 plt.plot(tlist, obsvalue['x'][0])
 plt.plot(tlist, obsvalue['x'][1])

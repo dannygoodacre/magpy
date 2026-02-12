@@ -36,16 +36,16 @@ class PauliString:
     def __init__(self, x_mask: int, z_mask: int, coeff: complex | Tensor = 1.0, n_qubits: int = None):
         from .._utils import tensorize
 
-        self._x_mask = x_mask
-        self._z_mask = z_mask
+        self._x_mask: int = x_mask
+        self._z_mask: int = z_mask
 
-        self._coeff = tensorize(coeff)
+        self._coeff: Scalar = tensorize(coeff)
 
         if n_qubits is None:
-            self._n_qubits = max(x_mask.bit_length(), z_mask.bit_length(), 1)
+            self._n_qubits: int = max(x_mask.bit_length(), z_mask.bit_length(), 1)
 
         else:
-            self._n_qubits = n_qubits
+            self._n_qubits: int = n_qubits
 
     def __add__(self, other: PauliString | HamOp) -> HamOp:
         from .hamiltonian_operator import HamOp
@@ -191,7 +191,7 @@ class PauliString:
         return scale * matrix
 
     def propagator(self, h: float = 1.0) -> HamOp:
-        """(t: expm(-i * h * t)"""
+        """expm(-i * h * P)"""
 
         v = h * self._coeff
 
@@ -205,6 +205,7 @@ class PauliString:
     def batch_count(self) -> int:
         try:
             return self.coeff.shape[0] if isinstance(self.coeff, Tensor) else 1
+
         except IndexError:
             return 1
 
@@ -217,8 +218,35 @@ class PauliString:
         return max(self._x_mask.bit_length(), self._z_mask.bit_length(), 1)
 
     @property
+    def qubit_map(self) -> dict[int, str]:
+        mapping = {}
+
+        max_bits = max(self._x_mask.bit_length(), self._z_mask.bit_length())
+
+        for i in range(max_bits):
+            x = (self._x_mask >> i) & 1
+            z = (self._z_mask >> i) & 1
+
+            if x and z:
+                mapping[i] = 'Y'
+            elif x:
+                mapping[i] = 'X'
+            elif z:
+                mapping[i] = 'Z'
+
+        return mapping
+
+    @property
     def shape(self) -> tuple[int, int, int]:
         return (self.batch_count, self.n_qubits**2, self.n_qubits**2)
+
+    @property
+    def weight(self) -> int:
+        """The number of non-identity qubits."""
+
+        active_qubits = self._x_mask | self._z_mask
+
+        return active_qubits.bit_count()
 
     def __single_qubit_matrix(self, i: int) -> Tensor:
         x = (self._x_mask >> i) & 1

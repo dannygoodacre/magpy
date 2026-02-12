@@ -13,8 +13,8 @@ from .._utils import commutes, format_number, tensorize
 
 class HamOp:
     def __init__(self, *args):
-        self._data = {}
-        self._n_qubits = 0
+        self._data: dict[PauliString, Scalar | Callable] = {}
+        self._n_qubits: int = 0
 
         for arg in args:
             if isinstance(arg, tuple):
@@ -40,7 +40,7 @@ class HamOp:
         for operator, coeff in self._data.items():
             result.__add_term(operator, coeff(*args, **kwargs) if callable(coeff) else coeff)
 
-        return result
+        return result.simplify()
 
     def __copy__(self):
         return self.copy()
@@ -146,7 +146,45 @@ class HamOp:
         result._data = self._data.copy()
         result._n_qubits = self._n_qubits
 
-        return
+        return result
+
+    def is_commuting(self) -> bool:
+        if len(self._data) <= 1:
+            return True
+
+        operators = list(self._data.keys())
+
+        for i in range(len(operators)):
+            for j in range(i + 1, len(operators)):
+                if not commutes(operators[i], operators[j]):
+                    return False
+
+        return True
+
+    def is_completely_independent(self) -> bool:
+        if self.is_interacting():
+            return False
+
+        active_axes: dict[int, str] = {}
+
+        for pauli_unit in self._data.keys():
+            for qubit_index, pauli_type in pauli_unit.qubit_map.items():
+                if qubit_index in active_axes and active_axes[qubit_index] != pauli_type:
+                    return False
+
+            active_axes[qubit_index] = pauli_type
+
+        return True
+
+    def is_constant(self) -> bool:
+        return not any(callable(coeff) for coeff in self._data.values())
+
+    def is_interacting(self):
+        for pauli_string in self._data.keys():
+            if pauli_string.weight > 1:
+                return True
+
+        return False
 
     def power(self, n: int) -> PauliString | HamOp:
         if n == 0:
@@ -223,32 +261,17 @@ class HamOp:
     @property
     def batch_count(self) -> int:
         batch = 1
-
         for coeff in self._data.values():
-            if isinstance(coeff, FunctionProduct):
-                batch = max(batch, coeff._scale)
+            val = coeff._scale if isinstance(coeff, FunctionProduct) else coeff
 
-            elif isinstance(coeff, Tensor):
-                batch = max(batch, coeff.shape[0])
+            if isinstance(val, Tensor):
+                if val.ndim > 0:
+                    batch = max(batch, val.shape[0])
+
+            elif isinstance(val, (list, tuple)):
+                batch = max(batch, len(val))
 
         return batch
-
-    @property
-    def is_commuting(self) -> bool:
-        # TODO: This only makes sense for constant HamOps.
-
-        operators = list(self._data.keys())
-
-        for i in range(len(operators)):
-            for j in range(i + 1, len(operators)):
-                if not commutes(operators[i], operators[j]):
-                    return False
-
-        return True
-
-    @property
-    def is_constant(self) -> bool:
-        return not any(callable(coeff) for coeff in self._data.values())
 
     @property
     def H(self) -> HamOp:
@@ -266,6 +289,11 @@ class HamOp:
     @property
     def n_qubits(self) -> int:
         return max(p.n_qubits for p in self._data.keys())
+
+    @property
+    def shape(self) -> tuple[int, int, int]:
+        return (self.batch_count, self.n_qubits**2, self.n_qubits**2)
+
 
     def __add_term(self, pauli_string: PauliString, scale: Number | Tensor | Callable = 1):
         operator = pauli_string.as_unit_operator()
