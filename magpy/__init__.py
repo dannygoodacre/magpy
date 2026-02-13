@@ -6,8 +6,6 @@ from .core.pauli_string import PauliString, X, Y, Z, I
 from .system import evolve
 from .new_system import new_evolve
 
-from .solve.integrate import integrate
-
 __all__ = [
     'PauliString', 'X', 'Y', 'Z', 'Id',
     'FunctionProduct',

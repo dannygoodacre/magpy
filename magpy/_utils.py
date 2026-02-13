@@ -15,6 +15,10 @@ def conjugate(x: Number | Tensor):
         return x.conj()
 
 
+def commutator(a: PauliString, b: PauliString) -> bool:
+    return a*b - b*a
+
+
 def commutes(a: PauliString, b: PauliString) -> bool:
     # TODO: Document
     # symplectic inner product: (Z1 & X2) ^ (X1 & Z2)
