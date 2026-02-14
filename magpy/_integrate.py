@@ -1,13 +1,9 @@
 from math import sqrt
-from typing import Callable
 
 import torch
 from torch import Tensor
 
-
-_KNOTS_3 = torch.tensor([-sqrt(3/5), 0, sqrt(3/5)], dtype=torch.complex128)
-_WEIGHTS_3 = torch.tensor([5/9, 8/9, 5/9])
-
+from ._glq import _KNOTS_3, _WEIGHTS_3
 
 def sample(f, t: float, h: float) -> Tensor:
     # Sample f across the def_ined interval at GLQ3 knots.
@@ -32,5 +28,3 @@ def antisymmetric_double_integral_from_sample(f_i: float, f_j: float, h: float) 
                + 2*(f_i[1]*f_j[2] - f_i[2]*f_j[1])
 
     return (sqrt(15) / 108) * h**2 * quad_sum
-
-

@@ -1,27 +1,28 @@
+from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor
 
+from .hamiltonian_operator import HamOp
 from .linalg import kron
-
-from .._types import Scalar
+from ..types import Scalar
 
 if TYPE_CHECKING:
-    from .hamiltonian_operator import HamOp
+    from ..types import Operator
 
 
 def X(index: int = 0) -> PauliString:
-    return PauliString(1 << index, 0, 1.0, index + 1)
+    return PauliString(1 << index, 0)
 
 def Y(index: int = 0) -> PauliString:
-    return PauliString(1 << index, 1 << index, 1.0, index + 1)
+    return PauliString(1 << index, 1 << index)
 
 def Z(index: int = 0) -> PauliString:
-    return PauliString(0, 1 << index, 1.0, index + 1)
+    return PauliString(0, 1 << index)
 
 def I(index: int = 0) -> PauliString:
-    return PauliString(0, 0, 1.0, index + 1)
+    return PauliString(0, 0)
 
 
 class PauliString:
@@ -33,7 +34,7 @@ class PauliString:
 
     _I_MATRIX = torch.eye(2, dtype=torch.complex128)
 
-    def __init__(self, x_mask: int, z_mask: int, coeff: complex | Tensor = 1.0, n_qubits: int = None):
+    def __init__(self, x_mask: int, z_mask: int, coeff: complex | Tensor = 1.0):
         from .._utils import tensorize
 
         self._x_mask: int = x_mask
@@ -41,24 +42,19 @@ class PauliString:
 
         self._coeff: Scalar = tensorize(coeff)
 
-        if n_qubits is None:
-            self._n_qubits: int = max(x_mask.bit_length(), z_mask.bit_length(), 1)
-
-        else:
-            self._n_qubits: int = n_qubits
-
-    def __add__(self, other: PauliString | HamOp) -> HamOp:
-        from .hamiltonian_operator import HamOp
-
+    def __add__(self, other: Operator) -> Operator:
         result = HamOp(self, other)
 
         return result.simplify()
+
+    def __call__(self, t: Tensor = None, **kwargs) -> PauliString:
+        return self
 
     def __copy__(self):
         return self.copy()
 
     def __hash__(self):
-        return hash((self._x_mask, self._z_mask, self._n_qubits))
+        return hash((self._x_mask, self._z_mask, self.n_qubits))
 
     def __eq__(self, other):
         if not isinstance(other, PauliString):
@@ -66,9 +62,9 @@ class PauliString:
 
         return self._x_mask == other._x_mask \
             and self._z_mask == other._z_mask \
-            and self._n_qubits == other._n_qubits
+            and self.n_qubits == other.n_qubits
 
-    def __mul__(self, other: Scalar | PauliString | HamOp) -> PauliString | HamOp:
+    def __mul__(self, other: Scalar | Operator) -> Operator:
         from .._utils import tensorize
 
         if isinstance(other, Scalar):
@@ -84,8 +80,6 @@ class PauliString:
                 self._z_mask ^ other._z_mask,
                 self._coeff * other._coeff * PauliString.__phase_factor(self, other)
             )
-
-        from .hamiltonian_operator import HamOp
 
         if isinstance(other, HamOp):
             return other.__rmul__(self)
@@ -105,11 +99,10 @@ class PauliString:
     def __pow__(self, n: int) -> PauliString:
         return self.power(n)
 
-    def __rmul__(self, other: Scalar | PauliString | HamOp) -> PauliString | HamOp:
+    def __rmul__(self, other: Scalar | Operator) -> Operator:
+        from ..types import Scalar
         if isinstance(other, Scalar | PauliString):
             return self * other
-
-        from .hamiltonian_operator import HamOp
 
         if isinstance(other, HamOp):
             return other * self
@@ -123,7 +116,7 @@ class PauliString:
 
         label = []
 
-        for i in range(self._n_qubits):
+        for i in range(self.n_qubits):
             x = (self._x_mask >> i) & 1
             z = (self._z_mask >> i) & 1
 
@@ -152,18 +145,44 @@ class PauliString:
 
         return f"{format_number(self._coeff)}*{operator_string}"
 
-    def __sub__(self, other: PauliString | HamOp) -> HamOp:
-        from .hamiltonian_operator import HamOp
-
+    def __sub__(self, other: Operator) -> Operator:
         return HamOp(self, -other)
 
     def as_unit_operator(self) -> PauliString:
-        return PauliString(self._x_mask, self._z_mask, n_qubits = self._n_qubits)
+        """Create a copy of the operator with unit coefficient.
+
+        Returns
+        -------
+        PauliString
+            A new instance with the same qubit structure and unit coefficient.
+        """
+        return PauliString(self._x_mask, self._z_mask)
 
     def copy(self) -> PauliString:
-        return PauliString(self._x_mask, self._z_mask, self._coeff, self._n_qubits)
+        """Create a shallow copy of the operator.
+
+        Returns
+        -------
+        PauliString
+            A new instance containing the same terms as `self`.
+        """
+
+        return PauliString(self._x_mask, self._z_mask, self._coeff)
 
     def power(self, n: int) -> PauliString:
+        """Compute the n-th power of the operator.
+
+        Parameters
+        ----------
+        n : int
+            A non-negative integer.
+
+        Returns
+        -------
+        PauliString
+            The resulting operator.
+        """
+
         if n == 0:
             return I()
 
@@ -177,21 +196,70 @@ class PauliString:
 
         return self.copy()
 
-    def tensor(self, n_qubits: int = None) -> Tensor:
+    def tensor(self, t: Tensor = None, n_qubits: int = None) -> Tensor:
+        """Calculate the dense matrix representation of the operator.
+
+        If the operator contains time-dependent coefficients, then the `t` parameter is used to
+        evaluate them. If `t` is a tensor of multiple values, then the resulting matrix will be
+        batched accordingly.
+
+        Parameters
+        ----------
+        t : Tensor, optional
+            Time value(s) at which to evaluate the operator, by default None
+        n_qubits : int, optional
+            Total number of qubits, by default None
+
+        Returns
+        -------
+        Tensor
+            A complex-valued, dense matrix of shape `(2^n, 2^n)` if `t` is a scalar or None.
+            If `t` or the operator is batched, returns shape `(batch_count, 2^n, 2^n)`.
+        """
+
         if n_qubits is None:
             n_qubits = self.n_qubits
 
-        matrix = kron(*[self.__single_qubit_matrix(i) for i in range(n_qubits)])
+        result = torch.tensor([[1.0]], dtype=torch.complex128)
+
+        for i in range(n_qubits):
+            xi = (self._x_mask >> i) & 1
+            zi = (self._z_mask >> i) & 1
+
+            if xi == 0 and zi == 0:
+                m = torch.eye(2, dtype=torch.complex128)
+
+            elif xi == 1 and zi == 0:
+                m = torch.tensor([[0., 1.], [1., 0.]], dtype=torch.complex128)
+
+            elif xi == 0 and zi == 1:
+                m = torch.tensor([[1., 0.], [0., -1.]], dtype=torch.complex128)
+
+            else:
+                m = torch.tensor([[0., -1j], [1j, 0.]], dtype=torch.complex128)
+
+            result = torch.kron(result, m)
 
         scale = self._coeff
 
-        if scale.ndim > 0:
-            scale = scale.view(*scale.shape, 1, 1)
+        if torch.is_tensor(scale) and scale.ndim > 0:
+            scale = scale.view(-1, 1, 1)
 
-        return scale * matrix
+        return scale * result
 
-    def propagator(self, h: float = 1.0) -> HamOp:
-        """expm(-i * h * P)"""
+    def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> HamOp:
+        """Compute the unitary propagator exp(-i * P * h) of the operator.
+
+        Parameters
+        ----------
+        h : Tensor, optional
+            The scaling factor for the exponent, by default torch.tensor(1.0, dtype=torch.complex128)
+
+        Returns
+        -------
+        HamOp
+            The resultant operator
+        """
 
         v = h * self._coeff
 
@@ -199,10 +267,14 @@ class PauliString:
 
     @property
     def coeff(self) -> Tensor:
+        """The coefficient of the operator."""
+
         return self._coeff
 
     @property
     def batch_count(self) -> int:
+        """The number of parallel simulations represented by the operator."""
+
         try:
             return self.coeff.shape[0] if isinstance(self.coeff, Tensor) else 1
 
@@ -211,10 +283,14 @@ class PauliString:
 
     @property
     def H(self) -> PauliString:
+        """The Hermititan adjoint."""
+
         return PauliString(self._x_mask, self._z_mask, self._coeff.conj())
 
     @property
     def n_qubits(self) -> int:
+        """The total number of qubits the operatorupon."""
+
         return max(self._x_mask.bit_length(), self._z_mask.bit_length(), 1)
 
     @property
@@ -238,6 +314,13 @@ class PauliString:
 
     @property
     def shape(self) -> tuple[int, int, int]:
+        """The dimensions of the dense tensor representation.
+
+        Returns
+        -------
+        tuple[int, int, int]
+            `(batch_count, 2^n_qubits, 2^n_qubits)`
+        """
         return (self.batch_count, self.n_qubits**2, self.n_qubits**2)
 
     @property
@@ -264,7 +347,29 @@ class PauliString:
         return self._I_MATRIX
 
     @staticmethod
-    def from_label(label: str, coeff: complex | Tensor = 1.0):
+    def from_label(label: str, coeff: Scalar = 1.0) -> PauliString:
+        """Create a PauliString from a string label (e.g., 'XIYZ').
+
+        The mapping from characters to qubits is big-endian.
+
+        Parameters
+        ----------
+        label : str
+            A string of 'I', 'X', 'Y', or 'Z'.
+        coeff : Scalar, optional
+            A scalar coefficient, by default 1.0
+
+        Returns
+        -------
+        PauliString
+            The resultant operator.
+
+        Raises
+        ------
+        ValueError
+            If `label` contains invalid characters.
+        """
+
         x_mask = 0
         z_mask = 0
 
@@ -280,45 +385,39 @@ class PauliString:
                 z_mask |= (1 << i)
 
             elif char != 'I':
-                raise ValueError(f"Invalid character: {char}")
+                raise ValueError(
+                    f"Invalid character '{char}' at position {i} in label '{label}'. "
+                    "Labels must only contain 'I', 'X', 'Y', or 'Z'."
+                )
 
         return PauliString(x_mask, z_mask, coeff, len(label))
 
     @staticmethod
-    def __phase_factor(a: PauliString, b: PauliString):
+    def __phase_factor(a: PauliString, b: PauliString) -> complex:
+        """Calculate the phase factor accumulated from the product of two PauliStrings.
+
+        Parameters
+        ----------
+        a : PauliString
+            The left-hand operand.
+        b : PauliString
+            The right-hand operand.
+
+        Returns
+        -------
+        complex
+            The resultant phase factor.
+        """
+
         x1, z1 = a._x_mask, a._z_mask
         x2, z2 = b._x_mask, b._z_mask
 
-        n_qubits = max(x1.bit_length(), z1.bit_length(), x2.bit_length(), z2.bit_length())
+        pos = (x1 & ~z1 & x2 & z2).bit_count()
+        pos += (x1 & z1 & ~x2 & z2).bit_count()
+        pos += (~x1 & z1 & x2 & ~z2).bit_count()
 
-        p = 0
+        neg = (x1 & z1 & x2 & ~z2).bit_count()
+        neg += (~x1 & z1 & x2 & z2).bit_count()
+        neg += (x1 & ~z1 & ~x2 & z2).bit_count()
 
-        for i in range(n_qubits):
-            b1_x = (x1 >> i) & 1
-            b1_z = (z1 >> i) & 1
-            b2_x = (x2 >> i) & 1
-            b2_z = (z2 >> i) & 1
-
-            if b1_x == b1_z:
-                if b1_x == 1:
-                    if b2_x == 1 and b2_z == 0:
-                        p -= 1
-
-                    elif b2_x == 0 and b2_z == 1:
-                        p += 1
-
-            elif b1_x == 1:
-                if b2_x == 1 and b2_z == 1:
-                    p += 1
-
-                elif b2_x == 0 and b2_z == 1:
-                    p -= 1
-
-            elif b1_z == 1:
-                if b2_x == 1 and b2_z == 0:
-                    p += 1
-
-                elif b2_x == 1 and b2_z == 1:
-                    p -= 1
-
-        return 1j ** (p % 4)
+        return 1j ** ((pos - neg) % 4)

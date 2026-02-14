@@ -13,37 +13,28 @@ References
 """
 
 
-from math import sqrt
 from numbers import Number
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
-import torch
-from torch import Tensor
 import expsolve as es
+import torch
 
-from .core import PauliString, I, HamOp
-from ._context import get_device
+from .core import PauliString, HamOp
 from ._integrate import integral_from_sample, antisymmetric_double_integral_from_sample
 from ._utils import commutator, commutes
+from ._glq import _KNOTS_3, _WEIGHTS_3
+
+if TYPE_CHECKING:
+    from . import Operator
+    from torch import Tensor
+    from .core import PauliString
 
 
-_KNOTS = torch.tensor([-sqrt(3/5), 0, sqrt(3/5)], dtype=torch.complex128)
-_WEIGHTS = torch.tensor([5/9, 8/9, 5/9])
-
-
-def _update_device():
-    global _KNOTS, _WEIGHTS
-
-    _KNOTS = _KNOTS.to(get_device())
-    _WEIGHTS = _WEIGHTS.to(get_device())
-
-
-def new_evolve(H: PauliString | HamOp,
+def new_evolve(H: Operator,
            rho0: PauliString,
            tlist: Tensor,
-           n_qubits: int = None,
-           observables: dict[str, Callable[[torch.Tensor, Number], torch.Tensor]] = {},
-           store_intermediate: bool = False) -> tuple[torch.Tensor, dict[str, torch.Tensor], torch.Tensor | None]:
+           observables: dict[str, Callable[[Tensor, Tensor], Tensor]] = {},
+           store_intermediate: bool = False) -> tuple[Tensor, dict[str, Tensor], Tensor | None]:
 
     batch_count = H.batch_count
 
@@ -63,9 +54,9 @@ def new_evolve(H: PauliString | HamOp,
         def stepper(t, h, rho):
             return u * rho * uH
 
-    elif H.is_disjoint():
+    elif H.is_disjoint:
         def stepper(t, h, rho):
-            knots = t + 0.5*h*(1 + _KNOTS)
+            knots = t + 0.5*h*(1 + _KNOTS_3)
 
             propagators = [first_term_pauli(unit_pauli, coeff(knots), h).propagator(h) for unit_pauli, coeff in H._data.items()]
 
@@ -80,7 +71,9 @@ def new_evolve(H: PauliString | HamOp,
         def stepper(t, h, rho):
             omega = two_term_magnus_step(H, t, h)
 
-            u = omega.static_commuting_progagator()
+            # TODO: Splitting method here, or brute-force expm.
+            # u = omega.propagator()
+            u = torch.matrix_exp(-1j * omega.tensor())
 
             return u * rho * u.H
 
@@ -97,7 +90,7 @@ def new_evolve(H: PauliString | HamOp,
 
 
 def first_term_pauli(pauli_unit: PauliString, coeff, h):
-    return 0.5 * h * torch.sum(_WEIGHTS * coeff) * pauli_unit
+    return 0.5 * h * torch.sum(_WEIGHTS_3 * coeff) * pauli_unit
 
 
 def two_term_magnus_step(H: HamOp, t: float, h: float) -> HamOp:
@@ -106,7 +99,7 @@ def two_term_magnus_step(H: HamOp, t: float, h: float) -> HamOp:
 
     n = len(pauli_strings)
 
-    knots = t + 0.5*h*(1 + _KNOTS)
+    knots = t + 0.5*h*(1 + _KNOTS_3)
 
     f_nodes = [
         coeff(knots) if callable(coeff) else coeff * torch.ones_like(knots)
@@ -118,7 +111,7 @@ def two_term_magnus_step(H: HamOp, t: float, h: float) -> HamOp:
     for i in range(n):
         result += integral_from_sample(f_nodes[i], h) * pauli_strings[i]
 
-    if not H.is_commuting():
+    if not H.is_commuting:
         for i in range(n):
             for j in range(i + 1, n):
                 if commutes(pauli_strings[i], pauli_strings[j]):

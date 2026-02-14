@@ -4,8 +4,10 @@ import torch
 from torch import Tensor
 
 from .core.pauli_string import PauliString
+from .types import Scalar
+
 from ._context import get_print_precision
-from ._types import Scalar
+
 
 def conjugate(x: Number | Tensor):
     try:

@@ -1,10 +1,15 @@
+from __future__ import annotations
 from numbers import Number
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 import torch
 from torch import Tensor
 
+from ..types import Scalar
 from .._utils import format_number
+
+if TYPE_CHECKING:
+    from .. import Operator
 
 class FunctionProduct:
 
@@ -19,7 +24,7 @@ class FunctionProduct:
                 for f, power in arg._functions.items():
                     self._functions[f] = self._functions.get(f, 0) + power
 
-            elif isinstance(arg, Number | Tensor):
+            elif isinstance(arg, Scalar):
                 self._scale *= arg
 
             elif callable(arg):
@@ -43,10 +48,9 @@ class FunctionProduct:
         return self._scale == other._scale and self._functions == other._functions
 
     def __mul__(self, other):
-        from .pauli_string import PauliString
-        from .hamiltonian_operator import HamOp
+        from .. import Operator
 
-        if isinstance(other, (PauliString, HamOp)):
+        if isinstance(other, Operator):
             return other.__rmul__(self)
 
         result = FunctionProduct(self)

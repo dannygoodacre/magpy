@@ -1,22 +1,24 @@
-from numbers import Number
-from typing import Callable
+from __future__ import annotations
+
+from typing import Callable, TYPE_CHECKING
 
 import torch
 from torch import Tensor
 
-from .pauli_string import PauliString, I
-from .function_product import FunctionProduct
+from ..types import Scalar
 
-from .._types import Scalar
-from .._utils import commutes, format_number, tensorize
+if TYPE_CHECKING:
+    from ..types import Scalar, Operator
+    from .pauli_string import PauliString
 
 
 class HamOp:
     def __init__(self, *args):
-        """Initialize a Hamiltonian operator from `PauliString` instances, tuples, or other `HamOp` instances."""
+        """Initialize a Hamiltonian operator from PauliString instances, tuples, or other HamOp instances."""
+
+        from .pauli_string import PauliString
 
         self._data: dict[PauliString, Scalar | Callable] = {}
-        self._n_qubits: int = 0
 
         for arg in args:
             if isinstance(arg, tuple):
@@ -31,33 +33,35 @@ class HamOp:
                 for pauli_string, coeff in arg._data.items():
                     self.__add_term(pauli_string, coeff)
 
-    def __add__(self, other: PauliString | HamOp):
+    def __add__(self, other: Operator) -> Operator:
         result = HamOp(self, other)
 
         return result.simplify()
 
-    def __call__(self, *args, **kwargs) -> PauliString | HamOp:
-        """Evaluate the operator with the given parameters.
+    def __call__(self, t: Tensor = None, **kwargs) -> Operator:
+        """Evaluate the operator at the given parameters.
 
         Returns
         -------
-        PauliString | HamOp
+        Operator
             The resultant operator.
         """
 
         result = HamOp()
 
         for operator, coeff in self._data.items():
-            result.__add_term(operator, coeff(*args, **kwargs) if callable(coeff) else coeff)
+            result.__add_term(operator, coeff(t, **kwargs) if callable(coeff) else coeff)
 
         return result.simplify()
 
     def __copy__(self):
         return self.copy()
 
-    def __mul__(self, other):
+    def __mul__(self, other: Scalar | Operator) -> Operator:
         if isinstance(other, Scalar):
             return self.__scalar_mul(other)
+
+        from .pauli_string import PauliString
 
         if isinstance(other, PauliString):
             other = HamOp(other)
@@ -86,6 +90,8 @@ class HamOp:
         if isinstance(other, Scalar):
             return self.__scalar_mul(other)
 
+        from .pauli_string import PauliString
+
         if isinstance(other, PauliString):
             return HamOp(other) * self
 
@@ -108,6 +114,8 @@ class HamOp:
                 c_str = str(coeff)
 
             else:
+                from .._utils import format_number
+
                 c_str = format_number(coeff)
 
                 if not torch.is_tensor(coeff) or coeff.ndim == 0:
@@ -157,16 +165,15 @@ class HamOp:
         Returns
         -------
         HamOp
-            A new HamOp instance containing the same terms and data.
+            A new instance containing the same terms as `self`.
         """
 
         result = HamOp()
         result._data = self._data.copy()
-        result._n_qubits = self._n_qubits
 
         return result
 
-    def power(self, n: int) -> PauliString | HamOp:
+    def power(self, n: int) -> Operator:
         """Compute the n-th power of the operator.
 
         Parameters
@@ -176,11 +183,13 @@ class HamOp:
 
         Returns
         -------
-        PauliString | HamOp
+        Operator
             The resulting operator.
         """
 
         if n == 0:
+            from .pauli_string import I
+
             return I()
 
         if n == 1:
@@ -198,7 +207,7 @@ class HamOp:
 
         return result
 
-    def static_commuting_propagator(self, h: float | Tensor = 1.0) -> HamOp:
+    def static_commuting_propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> HamOp:
         """Compute the unitary propagator exp(-i * H * h) for a static, commuting operator.
 
         Parameters
@@ -228,26 +237,54 @@ class HamOp:
         return result
 
     def simplify(self) -> HamOp | PauliString:
+        """Reduce the operator to a PauliString if it contains only one static term.
 
-        if len(self._data) == 1:
+        Returns
+        -------
+        HamOp | PauliString
+            The single PauliString if possible, otherwise `self`.
+        """
+
+        if len(self._data) == 1 and self.is_static:
             pauli_unit, coeff = next(iter(self._data.items()))
 
             return coeff * pauli_unit
 
         return self
 
-    def tensor(self, n_qubits: int = None) -> Tensor:
+    def tensor(self, t: Tensor = None, n_qubits: int = None) -> Tensor:
+        """Calculate the dense matrix representation of the operator.
+
+        If the operator contains time-dependent coefficients, then the `t` parameter is used to
+        evaluate them. If `t` is a tensor of multiple values, then the resulting matrix will be
+        batched accordingly.
+
+        Parameters
+        ----------
+        t : Tensor, optional
+            Time value(s) at which to evaluate the operator, by default None
+        n_qubits : int, optional
+            Total number of qubits, by default None
+
+        Returns
+        -------
+        Tensor
+            A complex-valued, dense matrix of shape `(2^n, 2^n)` if `t` is a scalar or None.
+            If `t` or the operator is batched, returns shape `(batch_count, 2^n, 2^n)`.
+        """
+
+        op = self(t) if t is not None else self
 
         if n_qubits is None:
-            n_qubits = self.n_qubits
+            n_qubits = op.n_qubits
 
-        if not self._data:
+        if not op._data:
             return torch.zeros((1,1), dtype=torch.complex128)
 
         result = None
 
-        for pauli_unit, coeff in self._data.items():
-            matrix = pauli_unit.tensor(n_qubits)
+        for pauli_unit, coeff in op._data.items():
+            matrix = pauli_unit.tensor(n_qubits=n_qubits)
 
             c = torch.as_tensor(coeff)
 
@@ -259,14 +296,19 @@ class HamOp:
 
                 continue
 
-            result = result + c * matrix
+            result = result + c*matrix
 
         return result
 
     @property
     def batch_count(self) -> int:
+        """The number of parallel simulations represented by the operator."""
+
+        from .function_product import FunctionProduct
+
         batch = 1
         for coeff in self._data.values():
+
             val = coeff._scale if isinstance(coeff, FunctionProduct) else coeff
 
             if isinstance(val, Tensor):
@@ -301,10 +343,12 @@ class HamOp:
 
     @property
     def is_commuting(self) -> bool:
-        """True if the constiuent terms mutually commute."""
+        """True if the constiuent terms of the operator mutually commute."""
 
         if len(self._data) <= 1:
             return True
+
+        from .._utils import commutes
 
         operators = list(self._data.keys())
 
@@ -319,10 +363,10 @@ class HamOp:
     def is_disjoint(self) -> bool:
         """True if the system is completely independent.
 
-        Each qubit is affected by at most one type of Paui operator.
+        Each qubit is affected by at most one type of Pauli operator.
         """
 
-        if self.is_local():
+        if not self.is_local:
             return False
 
         active_axes: dict[int, str] = {}
@@ -350,25 +394,46 @@ class HamOp:
 
     @property
     def n_qubits(self) -> int:
+        """The total number of qubits the operatorupon."""
+
+        if not self._data:
+            return 0
+
         return max(p.n_qubits for p in self._data.keys())
 
     @property
     def pauli_strings(self) -> tuple[PauliString]:
+        """The PauliString components."""
+
         return tuple(p for p in self._data.keys())
 
     @property
     def shape(self) -> tuple[int, int, int]:
-        return (self.batch_count, self.n_qubits**2, self.n_qubits**2)
+        """The dimensions of the dense tensor representation.
+
+        Returns
+        -------
+        tuple[int, int, int]
+            `(batch_count, 2^n_qubits, 2^n_qubits)`
+        """
+        dim = 2 ** self.n_qubits
+
+        return (self.batch_count, dim, dim)
 
     @property
     def terms(self) -> tuple[tuple[PauliString, Tensor | Callable]]:
+        """The (PauliString, coefficient) pairs constituting the operator."""
+
         return tuple((operator, coeff) for operator, coeff in self._data.items())
 
     def __add_term(self, pauli_string: PauliString, scale: Scalar = 1):
         operator = pauli_string.as_unit_operator()
 
         if callable(scale):
+            from .function_product import FunctionProduct
+
             coeff = FunctionProduct(scale, pauli_string.coeff)
+
         else:
             coeff = scale * pauli_string.coeff
 
@@ -391,6 +456,8 @@ class HamOp:
             del self._data[operator]
 
     def __scalar_mul(self, other):
+        from .._utils import tensorize
+
         other = tensorize(other)
 
         result = HamOp()

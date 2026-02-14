@@ -6,12 +6,15 @@ from .core.pauli_string import PauliString, X, Y, Z, I
 from .system import evolve
 from .new_system import new_evolve
 
+Operator = PauliString | HamOp
+
 __all__ = [
     'PauliString', 'X', 'Y', 'Z', 'Id',
     'FunctionProduct',
     'HamOp',
     'expm', 'frob', 'kron', 'msqrt_herm', 'timegrid', 'uhlmann',
-    'evolve', 'new_evolve'
+    'evolve', 'new_evolve',
+    'Operator'
 ]
 
 def set_default_device(device: str):
