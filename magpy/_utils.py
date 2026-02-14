@@ -4,7 +4,7 @@ import torch
 from torch import Tensor
 
 from .core.pauli_string import PauliString
-from .types import Scalar
+from .types import SCALAR_TYPES
 
 from ._context import get_print_precision
 
@@ -55,7 +55,7 @@ def format_number(n: Number | Tensor) -> str:
         return '(' + ', '.join(format_number(x) for x in n.tolist()) + ')'
 
 
-def tensorize(coeff: Scalar) -> Tensor:
+def tensorize(coeff: SCALAR_TYPES) -> Tensor:
     if isinstance(coeff, Tensor):
         return coeff.to(torch.complex128)
 

@@ -1,21 +1,19 @@
 from __future__ import annotations
 from numbers import Number
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 import torch
 from torch import Tensor
 
-from ..types import Scalar
-from .._utils import format_number
+from ..types import SCALAR_TYPES
+from .._utils import format_number, tensorize
 
-if TYPE_CHECKING:
-    from .. import Operator
 
 class FunctionProduct:
 
     def __init__(self, *args):
         self._functions: dict[Callable, int] = {}
-        self._scale = 1.0
+        self._scale: Tensor = torch.tensor(1, dtype=torch.complex128)
 
         for arg in args:
             if isinstance(arg, FunctionProduct):
@@ -24,8 +22,8 @@ class FunctionProduct:
                 for f, power in arg._functions.items():
                     self._functions[f] = self._functions.get(f, 0) + power
 
-            elif isinstance(arg, Scalar):
-                self._scale *= arg
+            elif isinstance(arg, SCALAR_TYPES):
+                self._scale *= tensorize(arg)
 
             elif callable(arg):
                 self._functions[arg] = self._functions.get(arg, 0) + 1
@@ -48,19 +46,18 @@ class FunctionProduct:
         return self._scale == other._scale and self._functions == other._functions
 
     def __mul__(self, other):
-        from .. import Operator
-
-        if isinstance(other, Operator):
+        if hasattr(other, '_x_mask') or hasattr(other, '_data'):
             return other.__rmul__(self)
 
         result = FunctionProduct(self)
 
         if isinstance(other, FunctionProduct):
             result._scale *= other._scale
+
             for f, p in other._functions.items():
                 result._functions[f] = result._functions.get(f, 0) + p
 
-        elif isinstance(other, (int, float, complex, Tensor, list, tuple)):
+        elif isinstance(other, SCALAR_TYPES):
             scale_val = torch.as_tensor(other, dtype=torch.complex128) \
                 if isinstance(other, (list, tuple)) else other
 

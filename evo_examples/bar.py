@@ -18,6 +18,6 @@ observables = {'x': lambda u, _: frob(u, X().tensor()),
 _, obsvalues, _ = new_evolve(H, rho0, tlist, observables=observables)
 
 plt.plot(tlist, obsvalues['x'][0])
-# plt.plot(tlist, obsvalues['y'][0])
-# plt.plot(tlist, obsvalues['z'][0])
+plt.plot(tlist, obsvalues['y'][0])
+plt.plot(tlist, obsvalues['z'][0])
 plt.show()

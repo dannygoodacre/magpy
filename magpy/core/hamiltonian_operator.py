@@ -5,33 +5,31 @@ from typing import Callable, TYPE_CHECKING
 import torch
 from torch import Tensor
 
-from ..types import Scalar
+from ..types import SCALAR_TYPES
 
 if TYPE_CHECKING:
-    from ..types import Scalar, Operator
     from .pauli_string import PauliString
+    from .. import Operator
 
 
 class HamOp:
     def __init__(self, *args):
         """Initialize a Hamiltonian operator from PauliString instances, tuples, or other HamOp instances."""
 
-        from .pauli_string import PauliString
-
-        self._data: dict[PauliString, Scalar | Callable] = {}
+        self._data: dict[PauliString, SCALAR_TYPES | Callable] = {}
 
         for arg in args:
             if isinstance(arg, tuple):
                 scale, pauli_string = arg
 
-                self.__add_term(pauli_string, scale)
+                self._add_term(pauli_string, scale)
 
-            elif isinstance(arg, PauliString):
-                self.__add_term(arg)
+            elif hasattr(arg, '_x_mask'):
+                self._add_term(arg)
 
             elif isinstance(arg, HamOp):
                 for pauli_string, coeff in arg._data.items():
-                    self.__add_term(pauli_string, coeff)
+                    self._add_term(pauli_string, coeff)
 
     def __add__(self, other: Operator) -> Operator:
         result = HamOp(self, other)
@@ -50,20 +48,18 @@ class HamOp:
         result = HamOp()
 
         for operator, coeff in self._data.items():
-            result.__add_term(operator, coeff(t, **kwargs) if callable(coeff) else coeff)
+            result._add_term(operator, coeff(t, **kwargs) if callable(coeff) else coeff)
 
         return result.simplify()
 
     def __copy__(self):
         return self.copy()
 
-    def __mul__(self, other: Scalar | Operator) -> Operator:
-        if isinstance(other, Scalar):
+    def __mul__(self, other: SCALAR_TYPES | Operator) -> Operator:
+        if isinstance(other, SCALAR_TYPES):
             return self.__scalar_mul(other)
 
-        from .pauli_string import PauliString
-
-        if isinstance(other, PauliString):
+        if hasattr(other, '_x_mask'):
             other = HamOp(other)
 
         if isinstance(other, HamOp):
@@ -71,7 +67,7 @@ class HamOp:
 
             for p1, c1 in self._data.items():
                 for p2, c2 in other._data.items():
-                    result.__add_term(p1 * p2, c1 * c2)
+                    result._add_term(p1 * p2, c1 * c2)
 
             return result
 
@@ -87,12 +83,10 @@ class HamOp:
         return self.__add__(other)
 
     def __rmul__(self, other):
-        if isinstance(other, Scalar):
+        if isinstance(other, SCALAR_TYPES):
             return self.__scalar_mul(other)
 
-        from .pauli_string import PauliString
-
-        if isinstance(other, PauliString):
+        if hasattr(other, '_x_mask'):
             return HamOp(other) * self
 
         if isinstance(other, HamOp):
@@ -304,12 +298,10 @@ class HamOp:
     def batch_count(self) -> int:
         """The number of parallel simulations represented by the operator."""
 
-        from .function_product import FunctionProduct
-
         batch = 1
         for coeff in self._data.values():
 
-            val = coeff._scale if isinstance(coeff, FunctionProduct) else coeff
+            val = coeff.scale if hasattr(coeff, '_functions') else coeff
 
             if isinstance(val, Tensor):
                 if val.ndim > 0:
@@ -426,7 +418,7 @@ class HamOp:
 
         return tuple((operator, coeff) for operator, coeff in self._data.items())
 
-    def __add_term(self, pauli_string: PauliString, scale: Scalar = 1):
+    def _add_term(self, pauli_string: PauliString, scale: SCALAR_TYPES = 1):
         operator = pauli_string.as_unit_operator()
 
         if callable(scale):

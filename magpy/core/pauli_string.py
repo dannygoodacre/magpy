@@ -1,27 +1,28 @@
-from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor
 
-from .hamiltonian_operator import HamOp
-from .linalg import kron
-from ..types import Scalar
+from ..types import SCALAR_TYPES
 
 if TYPE_CHECKING:
-    from ..types import Operator
+    from .. import Operator
+    from .hamiltonian_operator import HamOp
 
 
 def X(index: int = 0) -> PauliString:
     return PauliString(1 << index, 0)
 
+
 def Y(index: int = 0) -> PauliString:
     return PauliString(1 << index, 1 << index)
+
 
 def Z(index: int = 0) -> PauliString:
     return PauliString(0, 1 << index)
 
-def I(index: int = 0) -> PauliString:
+
+def I() -> PauliString:
     return PauliString(0, 0)
 
 
@@ -40,9 +41,11 @@ class PauliString:
         self._x_mask: int = x_mask
         self._z_mask: int = z_mask
 
-        self._coeff: Scalar = tensorize(coeff)
+        self._coeff: Tensor = tensorize(coeff)
 
     def __add__(self, other: Operator) -> Operator:
+        from .hamiltonian_operator import HamOp
+
         result = HamOp(self, other)
 
         return result.simplify()
@@ -64,10 +67,10 @@ class PauliString:
             and self._z_mask == other._z_mask \
             and self.n_qubits == other.n_qubits
 
-    def __mul__(self, other: Scalar | Operator) -> Operator:
+    def __mul__(self, other: SCALAR_TYPES | Operator) -> Operator:
         from .._utils import tensorize
 
-        if isinstance(other, Scalar):
+        if isinstance(other, SCALAR_TYPES):
             return PauliString(
                 self._x_mask,
                 self._z_mask,
@@ -81,10 +84,12 @@ class PauliString:
                 self._coeff * other._coeff * PauliString.__phase_factor(self, other)
             )
 
-        if isinstance(other, HamOp):
+        if hasattr(other, '_data'):
             return other.__rmul__(self)
 
         if callable(other):
+            from .hamiltonian_operator import HamOp
+
             return HamOp((other, self))
 
         return NotImplemented
@@ -99,15 +104,16 @@ class PauliString:
     def __pow__(self, n: int) -> PauliString:
         return self.power(n)
 
-    def __rmul__(self, other: Scalar | Operator) -> Operator:
-        from ..types import Scalar
-        if isinstance(other, Scalar | PauliString):
+    def __rmul__(self, other: SCALAR_TYPES | Operator) -> Operator:
+        if isinstance(other, SCALAR_TYPES) or hasattr(other, '_x_mask'):
             return self * other
 
-        if isinstance(other, HamOp):
+        if hasattr(other, '_data'):
             return other * self
 
         if callable(other):
+            from .hamiltonian_operator import HamOp
+
             return HamOp((other, self))
 
     def __str__(self):
@@ -134,7 +140,7 @@ class PauliString:
 
         operator_string = '*'.join(label) if label else 'I'
 
-        if isinstance(self._coeff, torch.Tensor):
+        if isinstance(self._coeff, Tensor):
             if torch.all(self._coeff == 1):
                 return operator_string
 
@@ -146,6 +152,8 @@ class PauliString:
         return f"{format_number(self._coeff)}*{operator_string}"
 
     def __sub__(self, other: Operator) -> Operator:
+        from .hamiltonian_operator import HamOp
+
         return HamOp(self, -other)
 
     def as_unit_operator(self) -> PauliString:
@@ -156,6 +164,7 @@ class PauliString:
         PauliString
             A new instance with the same qubit structure and unit coefficient.
         """
+
         return PauliString(self._x_mask, self._z_mask)
 
     def copy(self) -> PauliString:
@@ -331,23 +340,8 @@ class PauliString:
 
         return active_qubits.bit_count()
 
-    def __single_qubit_matrix(self, i: int) -> Tensor:
-        x = (self._x_mask >> i) & 1
-        z = (self._z_mask >> i) & 1
-
-        if x and z:
-            return self._Y_MATRIX
-
-        elif x:
-            return self._X_MATRIX
-
-        elif z:
-            return self._Z_MATRIX
-
-        return self._I_MATRIX
-
     @staticmethod
-    def from_label(label: str, coeff: Scalar = 1.0) -> PauliString:
+    def from_label(label: str, coeff: SCALAR_TYPES = 1.0) -> PauliString:
         """Create a PauliString from a string label (e.g., 'XIYZ').
 
         The mapping from characters to qubits is big-endian.
@@ -356,7 +350,7 @@ class PauliString:
         ----------
         label : str
             A string of 'I', 'X', 'Y', or 'Z'.
-        coeff : Scalar, optional
+        coeff : SCALAR_TYPES, optional
             A scalar coefficient, by default 1.0
 
         Returns

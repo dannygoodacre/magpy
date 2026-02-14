@@ -1,12 +1,14 @@
 from .core.function_product import FunctionProduct
 from .core.hamiltonian_operator import HamOp
-from .core.linalg import frob, kron, timegrid, msqrt_herm, uhlmann
+from .core.linalg import frob, timegrid, msqrt_herm, uhlmann
 from .core.pauli_string import PauliString, X, Y, Z, I
 
 from .system import evolve
 from .new_system import new_evolve
 
-Operator = PauliString | HamOp
+
+type Operator = PauliString | HamOp
+
 
 __all__ = [
     'PauliString', 'X', 'Y', 'Z', 'Id',
@@ -16,6 +18,7 @@ __all__ = [
     'evolve', 'new_evolve',
     'Operator'
 ]
+
 
 def set_default_device(device: str):
     """Set the default device for `magpy` and `torch` tensors. The default is `cpu`.
@@ -38,6 +41,7 @@ def set_default_device(device: str):
 
     _update_device()
 
+
 def set_print_precision(precision: int):
     """Set the number of digits of precision for floating point output.
 
@@ -53,6 +57,7 @@ def set_print_precision(precision: int):
     _CONTEXT.print_precision = precision
 
     set_printoptions(precision)
+
 
 def set_print_identities(arg: bool):
     from._context import _CONTEXT

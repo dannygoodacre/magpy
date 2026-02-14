@@ -9,46 +9,8 @@ References
 
 """
 
-
-import functools
-import math
-from typing import TYPE_CHECKING
-
 import torch
 from torch import Tensor
-
-
-if TYPE_CHECKING:
-    from .pauli_string import PauliString
-
-
-# def propagator(arg: PauliString, h: float | Tensor = 1.0):
-#     # expm(-i * h * H(t))
-
-#     if arg.is_constant:
-#         v = torch.as_tensor(arg.coeff * h)
-
-#         return torch.cos(v)*I() - 1j*torch.sin(v)*arg.as_unit_operator()
-
-#     if callable(arg.coeff):
-#         s = FunctionProduct() * h * (lambda *args: torch.sin(arg.coeff(*args)))
-
-#         c = FunctionProduct() * h * (lambda *args: torch.cos(arg.coeff(*args)))
-
-#     else:
-#         a = h * arg.coeff
-
-#         s = torch.sin(a) if torch.is_tensor(a) else math.sin(a)
-
-#         c = torch.cos(a) if torch.is_tensor(a) else math.cos(a)
-
-#     from .hamiltonian_operator import HamOp
-#     from .pauli_string import I
-
-#     return HamOp(
-#         (c, I()),
-#         (-1j * s, arg.as_unit_operator())
-#     )
 
 
 def frob(a: Tensor, b: Tensor) -> Tensor:
@@ -78,12 +40,6 @@ def frob(a: Tensor, b: Tensor) -> Tensor:
 
     except IndexError:
         return torch.sum(torch.conj(a) * b)
-
-
-def kron(*args: Tensor) -> Tensor:
-    """The Kronecker product."""
-
-    return functools.reduce(torch.kron, args)
 
 
 def msqrt_herm(a: Tensor) -> Tensor:

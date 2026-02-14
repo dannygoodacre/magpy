@@ -68,6 +68,8 @@ def new_evolve(H: Operator,
             return u * rho * u.H
 
     else:
+        # TODO: 14/02/26: Fix this part. Also fix the typing issues.
+
         def stepper(t, h, rho):
             omega = two_term_magnus_step(H, t, h)
 
