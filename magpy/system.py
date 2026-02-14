@@ -104,7 +104,7 @@ def evolve(H: HamOp,
     if H.is_constant():
         h = tlist[1] - tlist[0]
 
-        u = H.propagator(h)
+        u = H.static_commuting_progagator(h)
 
         ut = u.H
 

@@ -2,7 +2,7 @@ from math import sqrt
 
 import torch
 
-from magpy import HamOp, X, Y, Z, I, FunctionProduct as FP, integrate, timegrid, frob, new_evolve, PauliString
+from magpy import HamOp, X, Y, Z, I, FunctionProduct as FP, timegrid, frob, new_evolve, PauliString
 import matplotlib.pyplot as plt
 
 def f(t): return torch.sin(t)
@@ -12,6 +12,12 @@ def g(t): return torch.exp(-t)
 H1 = f*Z(0)
 H2 = g*Z(1)
 H = H1 + H2
+
+print(H.terms)
+print(H.coeffs)
+print(H.pauli_strings)
+exit(0)
+
 rho0 = (0.5*(I(0) + X(0))) * (0.5*(I(1) + X(1)))
 
 tlist = timegrid(0, 10, 0.01)

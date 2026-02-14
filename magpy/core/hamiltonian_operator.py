@@ -4,7 +4,7 @@ from typing import Callable
 import torch
 from torch import Tensor
 
-from .pauli_string import PauliString
+from .pauli_string import PauliString, I
 from .function_product import FunctionProduct
 
 from .._types import Scalar
@@ -13,6 +13,8 @@ from .._utils import commutes, format_number, tensorize
 
 class HamOp:
     def __init__(self, *args):
+        """Initialize a Hamiltonian operator from `PauliString` instances, tuples, or other `HamOp` instances."""
+
         self._data: dict[PauliString, Scalar | Callable] = {}
         self._n_qubits: int = 0
 
@@ -34,7 +36,15 @@ class HamOp:
 
         return result.simplify()
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args, **kwargs) -> PauliString | HamOp:
+        """Evaluate the operator with the given parameters.
+
+        Returns
+        -------
+        PauliString | HamOp
+            The resultant operator.
+        """
+
         result = HamOp()
 
         for operator, coeff in self._data.items():
@@ -64,7 +74,7 @@ class HamOp:
         return NotImplemented
 
     def __neg__(self):
-        return -1 * HamOp(self)
+        return self.__scalar_mul(-1)
 
     def __pow__(self, n: int):
         return self.power(n)
@@ -142,60 +152,42 @@ class HamOp:
         return HamOp(self, -other)
 
     def copy(self) -> HamOp:
+        """Create a shallow copy of the operator.
+
+        Returns
+        -------
+        HamOp
+            A new HamOp instance containing the same terms and data.
+        """
+
         result = HamOp()
         result._data = self._data.copy()
         result._n_qubits = self._n_qubits
 
         return result
 
-    def is_commuting(self) -> bool:
-        if len(self._data) <= 1:
-            return True
-
-        operators = list(self._data.keys())
-
-        for i in range(len(operators)):
-            for j in range(i + 1, len(operators)):
-                if not commutes(operators[i], operators[j]):
-                    return False
-
-        return True
-
-    def is_completely_independent(self) -> bool:
-        if self.is_interacting():
-            return False
-
-        active_axes: dict[int, str] = {}
-
-        for pauli_unit in self._data.keys():
-            for qubit_index, pauli_type in pauli_unit.qubit_map.items():
-                if qubit_index in active_axes and active_axes[qubit_index] != pauli_type:
-                    return False
-
-            active_axes[qubit_index] = pauli_type
-
-        return True
-
-    def is_constant(self) -> bool:
-        return not any(callable(coeff) for coeff in self._data.values())
-
-    def is_interacting(self):
-        for pauli_string in self._data.keys():
-            if pauli_string.weight > 1:
-                return True
-
-        return False
-
     def power(self, n: int) -> PauliString | HamOp:
-        if n == 0:
-            from .pauli_string import I
+        """Compute the n-th power of the operator.
 
+        Parameters
+        ----------
+        n : int
+            A non-negative integer.
+
+        Returns
+        -------
+        PauliString | HamOp
+            The resulting operator.
+        """
+
+        if n == 0:
             return I()
 
         if n == 1:
             return self
 
         result = None
+
         base = self
 
         while n > 0:
@@ -206,12 +198,21 @@ class HamOp:
 
         return result
 
-    def propagator(self, h: float = 1.0) -> HamOp:
-        """expm(-i * h * H), for constant, commuting H."""
+    def static_commuting_propagator(self, h: float | Tensor = 1.0) -> HamOp:
+        """Compute the unitary propagator exp(-i * H * h) for a static, commuting operator.
 
-        # TODO: Quadrature for the rest?
+        Parameters
+        ----------
+        h : float | Tensor, optional
+            The scaling factor for the exponent, by default 1.0
 
-        if not self.is_constant or not self.is_commuting:
+        Returns
+        -------
+        HamOp
+            The resultant operator.
+        """
+
+        if not self.is_static or not self.is_commuting:
             return NotImplemented
 
         result = None
@@ -220,11 +221,14 @@ class HamOp:
             if result is None:
                 result = (coeff * pauli_string).propagator(h)
 
+                continue
+
             result *= (coeff * pauli_string).propagator(h)
 
         return result
 
     def simplify(self) -> HamOp | PauliString:
+
         if len(self._data) == 1:
             pauli_unit, coeff = next(iter(self._data.items()))
 
@@ -233,6 +237,7 @@ class HamOp:
         return self
 
     def tensor(self, n_qubits: int = None) -> Tensor:
+
         if n_qubits is None:
             n_qubits = self.n_qubits
 
@@ -274,7 +279,15 @@ class HamOp:
         return batch
 
     @property
+    def coeffs(self) -> tuple[Tensor | Callable]:
+        """The constituent coefficients."""
+
+        return tuple(coeff for coeff in self._data.values())
+
+    @property
     def H(self) -> HamOp:
+        """The Hermititan adjoint."""
+
         result = None
         for pauli_unit, coeff in self._data.items():
             if result is None:
@@ -287,15 +300,71 @@ class HamOp:
         return result
 
     @property
+    def is_commuting(self) -> bool:
+        """True if the constiuent terms mutually commute."""
+
+        if len(self._data) <= 1:
+            return True
+
+        operators = list(self._data.keys())
+
+        for i in range(len(operators)):
+            for j in range(i + 1, len(operators)):
+                if not commutes(operators[i], operators[j]):
+                    return False
+
+        return True
+
+    @property
+    def is_disjoint(self) -> bool:
+        """True if the system is completely independent.
+
+        Each qubit is affected by at most one type of Paui operator.
+        """
+
+        if self.is_local():
+            return False
+
+        active_axes: dict[int, str] = {}
+
+        for pauli_unit in self._data.keys():
+            for qubit_index, pauli_type in pauli_unit.qubit_map.items():
+                if qubit_index in active_axes and active_axes[qubit_index] != pauli_type:
+                    return False
+
+            active_axes[qubit_index] = pauli_type
+
+        return True
+
+    @property
+    def is_local(self):
+        """True if every term acts on at most one qubit."""
+
+        return not any(p.weight > 1 for p in self._data.keys())
+
+    @property
+    def is_static(self) -> bool:
+        """True if all coefficients are constant."""
+
+        return not any(callable(coeff) for coeff in self._data.values())
+
+    @property
     def n_qubits(self) -> int:
         return max(p.n_qubits for p in self._data.keys())
+
+    @property
+    def pauli_strings(self) -> tuple[PauliString]:
+        return tuple(p for p in self._data.keys())
 
     @property
     def shape(self) -> tuple[int, int, int]:
         return (self.batch_count, self.n_qubits**2, self.n_qubits**2)
 
+    @property
+    def terms(self) -> tuple[tuple[PauliString, Tensor | Callable]]:
+        return tuple((operator, coeff) for operator, coeff in self._data.items())
 
-    def __add_term(self, pauli_string: PauliString, scale: Number | Tensor | Callable = 1):
+    def __add_term(self, pauli_string: PauliString, scale: Scalar = 1):
         operator = pauli_string.as_unit_operator()
 
         if callable(scale):
