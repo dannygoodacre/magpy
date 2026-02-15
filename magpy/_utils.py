@@ -7,7 +7,7 @@ from torch import Tensor
 from ._context import get_print_precision
 
 if TYPE_CHECKING:
-    from .types import SCALAR_TYPES
+    from .types import Scalar
 
 
 def format_number(n: Number | Tensor) -> str:
@@ -35,7 +35,7 @@ def format_number(n: Number | Tensor) -> str:
         return '(' + ', '.join(format_number(x) for x in n.tolist()) + ')'
 
 
-def tensorize(coeff: SCALAR_TYPES) -> Tensor:
+def tensorize(coeff: Scalar) -> Tensor:
     if isinstance(coeff, Tensor):
         return coeff.to(torch.complex128)
 

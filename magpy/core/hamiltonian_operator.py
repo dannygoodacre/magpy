@@ -6,18 +6,18 @@ import torch
 from torch import Tensor
 
 from .._registry import is_type, register
-from ..types import SCALAR_TYPES
+from ..types import Scalar
 
 if TYPE_CHECKING:
     from .pauli_string import PauliString
     from .. import Operator
 
 @register
-class HamOp:
+class HamiltonianOperator:
     def __init__(self, *args):
         """Initialize a Hamiltonian operator from PauliString instances, tuples, or other HamOp instances."""
 
-        self._data: dict[PauliString, SCALAR_TYPES | Callable] = {}
+        self._data: dict[PauliString, Scalar | Callable] = {}
 
         for arg in args:
             if isinstance(arg, tuple):
@@ -28,12 +28,12 @@ class HamOp:
             elif is_type(arg, 'PauliString'):
                 self._add_term(arg)
 
-            elif isinstance(arg, HamOp):
+            elif isinstance(arg, HamiltonianOperator):
                 for pauli_string, coeff in arg._data.items():
                     self._add_term(pauli_string, coeff)
 
     def __add__(self, other: Operator) -> Operator:
-        result = HamOp(self, other)
+        result = HamiltonianOperator(self, other)
 
         return result.simplify()
 
@@ -46,7 +46,7 @@ class HamOp:
             The resultant operator.
         """
 
-        result = HamOp()
+        result = HamiltonianOperator()
 
         for operator, coeff in self._data.items():
             result._add_term(operator, coeff(t, **kwargs) if callable(coeff) else coeff)
@@ -56,15 +56,15 @@ class HamOp:
     def __copy__(self):
         return self.copy()
 
-    def __mul__(self, other: SCALAR_TYPES | Operator) -> Operator:
-        if isinstance(other, SCALAR_TYPES):
+    def __mul__(self, other: Scalar | Operator) -> Operator:
+        if isinstance(other, Scalar):
             return self.__scalar_mul(other)
 
         if is_type(other, 'PauliString'):
-            other = HamOp(other)
+            other = HamiltonianOperator(other)
 
-        if isinstance(other, HamOp):
-            result = HamOp()
+        if isinstance(other, HamiltonianOperator):
+            result = HamiltonianOperator()
 
             for p1, c1 in self._data.items():
                 for p2, c2 in other._data.items():
@@ -84,13 +84,13 @@ class HamOp:
         return self.__add__(other)
 
     def __rmul__(self, other):
-        if isinstance(other, SCALAR_TYPES):
+        if isinstance(other, Scalar):
             return self.__scalar_mul(other)
 
         if is_type(other, 'PauliString'):
-            return HamOp(other) * self
+            return HamiltonianOperator(other) * self
 
-        if isinstance(other, HamOp):
+        if isinstance(other, HamiltonianOperator):
             return other * self
 
     def __str__(self):
@@ -152,9 +152,9 @@ class HamOp:
         return ''.join(label_parts)
 
     def __sub__(self, other):
-        return HamOp(self, -other)
+        return HamiltonianOperator(self, -other)
 
-    def copy(self) -> HamOp:
+    def copy(self) -> HamiltonianOperator:
         """Create a shallow copy of the operator.
 
         Returns
@@ -163,7 +163,7 @@ class HamOp:
             A new instance containing the same terms as `self`.
         """
 
-        result = HamOp()
+        result = HamiltonianOperator()
         result._data = self._data.copy()
 
         return result
@@ -202,7 +202,7 @@ class HamOp:
 
         return result
 
-    def static_commuting_propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> HamOp:
+    def static_commuting_propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> HamiltonianOperator:
         """Compute the unitary propagator exp(-i * H * h) for a static, commuting operator.
 
         Parameters
@@ -231,7 +231,7 @@ class HamOp:
 
         return result
 
-    def simplify(self) -> HamOp | PauliString:
+    def simplify(self) -> HamiltonianOperator | PauliString:
         """Reduce the operator to a PauliString if it contains only one static term.
 
         Returns
@@ -320,7 +320,7 @@ class HamOp:
         return tuple(coeff for coeff in self._data.values())
 
     @property
-    def H(self) -> HamOp:
+    def H(self) -> HamiltonianOperator:
         """The Hermititan adjoint."""
 
         result = None
@@ -419,7 +419,7 @@ class HamOp:
 
         return tuple((operator, coeff) for operator, coeff in self._data.items())
 
-    def _add_term(self, pauli_string: PauliString, scale: SCALAR_TYPES = 1):
+    def _add_term(self, pauli_string: PauliString, scale: Scalar = 1):
         operator = pauli_string.as_unit_operator()
 
         if callable(scale):
@@ -453,7 +453,7 @@ class HamOp:
 
         other = tensorize(other)
 
-        result = HamOp()
+        result = HamiltonianOperator()
 
         result._data = {
             pauli_string: coeff * other

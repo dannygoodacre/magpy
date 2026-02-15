@@ -3,9 +3,9 @@ from typing import TYPE_CHECKING
 import torch
 from torch import Tensor
 
-from .hamiltonian_operator import HamOp
+from .hamiltonian_operator import HamiltonianOperator
 from .._registry import register, is_type
-from ..types import SCALAR_TYPES
+from ..types import Scalar
 from .._context import get_print_identities
 from .._utils import format_number
 
@@ -48,7 +48,7 @@ class PauliString:
         self._coeff: Tensor = tensorize(coeff)
 
     def __add__(self, other: Operator) -> Operator:
-        return HamOp(self, other).simplify()
+        return HamiltonianOperator(self, other).simplify()
 
     def __call__(self, t: Tensor = None, **kwargs) -> PauliString:
         return self
@@ -67,9 +67,9 @@ class PauliString:
             and self._z_mask == other._z_mask \
             and self.n_qubits == other.n_qubits
 
-    def __mul__(self, other: SCALAR_TYPES | Operator) -> Operator:
+    def __mul__(self, other: Scalar | Operator) -> Operator:
 
-        if isinstance(other, SCALAR_TYPES):
+        if isinstance(other, Scalar):
             from .._utils import tensorize
 
             return PauliString(
@@ -89,7 +89,7 @@ class PauliString:
             return other.__rmul__(self)
 
         if callable(other):
-            return HamOp((other, self))
+            return HamiltonianOperator((other, self))
 
         return NotImplemented
 
@@ -103,15 +103,15 @@ class PauliString:
     def __pow__(self, n: int) -> PauliString:
         return self.power(n)
 
-    def __rmul__(self, other: SCALAR_TYPES | Operator) -> Operator:
-        if isinstance(other, SCALAR_TYPES) or is_type(other, 'PauliString'):
+    def __rmul__(self, other: Scalar | Operator) -> Operator:
+        if isinstance(other, Scalar) or is_type(other, 'PauliString'):
             return self * other
 
         if is_type(other, 'HamOp'):
             return other * self
 
         if callable(other):
-            return HamOp((other, self))
+            return HamiltonianOperator((other, self))
 
     def __str__(self):
         label = []
@@ -146,7 +146,7 @@ class PauliString:
         return f"{format_number(self._coeff)}*{operator_string}"
 
     def __sub__(self, other: Operator) -> Operator:
-        return HamOp(self, -other)
+        return HamiltonianOperator(self, -other)
 
     def as_unit_operator(self) -> PauliString:
         """Create a copy of the operator with unit coefficient.
@@ -248,7 +248,7 @@ class PauliString:
 
         return scale * result
 
-    def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> HamOp:
+    def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> HamiltonianOperator:
         """Compute the unitary propagator exp(-i * P * h) of the operator.
 
         Parameters
@@ -333,7 +333,7 @@ class PauliString:
         return active_qubits.bit_count()
 
     @staticmethod
-    def from_label(label: str, coeff: SCALAR_TYPES = 1.0) -> PauliString:
+    def from_label(label: str, coeff: Scalar = 1.0) -> PauliString:
         """Create a PauliString from a string label (e.g., 'XIYZ').
 
         The mapping from characters to qubits is big-endian.

@@ -2,7 +2,7 @@ from math import sqrt
 
 import torch
 
-from magpy import HamOp, X, Y, Z, I, FunctionProduct as FP, timegrid, frob, evolve, PauliString
+from magpy import HamiltonianOperator, X, Y, Z, I, FunctionProduct as FP, timegrid, frob, evolve, PauliString
 import matplotlib.pyplot as plt
 
 def f(t): return torch.sin(t)

@@ -5,8 +5,8 @@ import torch
 from torch import Tensor
 
 from .._registry import register, is_type
-from ..types import SCALAR_TYPES
 from .._utils import format_number, tensorize
+from ..types import Scalar
 
 if TYPE_CHECKING:
     from typing import Callable
@@ -26,7 +26,7 @@ class FunctionProduct:
                 for f, power in arg._functions.items():
                     self._functions[f] = self._functions.get(f, 0) + power
 
-            elif isinstance(arg, SCALAR_TYPES):
+            elif isinstance(arg, Scalar):
                 self._scale *= tensorize(arg)
 
             elif callable(arg):
@@ -61,7 +61,7 @@ class FunctionProduct:
             for f, p in other._functions.items():
                 result._functions[f] = result._functions.get(f, 0) + p
 
-        elif isinstance(other, SCALAR_TYPES):
+        elif isinstance(other, Scalar):
             scale_val = torch.as_tensor(other, dtype=torch.complex128) \
                 if isinstance(other, (list, tuple)) else other
 

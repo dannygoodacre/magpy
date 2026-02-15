@@ -19,7 +19,7 @@ import expsolve as es
 import torch
 
 from ._context import get_device
-from .core import PauliString, HamOp
+from .core import PauliString, HamiltonianOperator
 from ._glq import _KNOTS_3, _WEIGHTS_3
 from ._integrate import integral_from_sample, antisymmetric_double_integral_from_sample
 from .linalg import commutes
@@ -46,7 +46,12 @@ def evolve(H: Operator,
 
     Examples
     --------
-    >>> H = torch.sin*X()
+    >>> H = ...
+    >>> rho0 = ...
+    >>> tlist = mp.timegrid(0, 10, 0.5**6)
+    >>> observables = { ... }
+    >>> rhoT, obs_values, _ = mp.evolve(H, rho0, tlist, observables, store_intermediate = False)
+    >>> TODO
 
     Parameters
     ----------
@@ -103,14 +108,16 @@ def evolve(H: Operator,
             return u * rho * u.H
 
     else:
-        def stepper(t, h, rho):
-            omega = two_term_magnus_step(H, t, h)
+        # def stepper(t, h, rho):
+        #     omega = two_term_magnus_step(H, t, h)
 
-            # TODO: Splitting method here, or brute-force expm.
-            # u = omega.propagator()
-            u = torch.matrix_exp(-1j * omega.tensor())
+        #     # u = omega.propagator()
+        #     u = torch.matrix_exp(-1j * omega.tensor())
 
-            return u * rho * u.H
+        #     return u * rho * u.H
+
+        # TODO: Splitting method here.
+        return
 
     rho, obsvalues, states = es.solvediffeq(torch.ones(batch_count) * rho0,
                                             tlist,
@@ -128,7 +135,7 @@ def first_term_pauli(pauli_unit: PauliString, coeff, h):
     return 0.5 * h * torch.sum(_WEIGHTS_3 * coeff) * pauli_unit
 
 
-def two_term_magnus_step(H: HamOp, t: float, h: float) -> HamOp:
+def two_term_magnus_step(H: HamiltonianOperator, t: float, h: float) -> HamiltonianOperator:
     pauli_strings = H.pauli_strings
     coeffs = H.coeffs
 
@@ -141,7 +148,7 @@ def two_term_magnus_step(H: HamOp, t: float, h: float) -> HamOp:
         for coeff in coeffs
     ]
 
-    result = HamOp()
+    result = HamiltonianOperator()
 
     for i in range(n):
         result += integral_from_sample(f_nodes[i], h) * pauli_strings[i]
