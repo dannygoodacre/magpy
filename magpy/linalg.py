@@ -15,6 +15,8 @@ import torch
 
 if TYPE_CHECKING:
     from torch import Tensor
+
+    from . import Operator
     from .core.pauli_string import PauliString
 
 
@@ -22,6 +24,23 @@ def commutes(a: PauliString, b: PauliString) -> bool:
     check = (a._z_mask & b._x_mask) ^ (a._x_mask & b._z_mask)
 
     return check.bit_count() % 2 == 0
+
+
+def expected(rho: PauliString, obs: PauliString, n_qubits: int = None):
+    if n_qubits is None:
+        n_qubits = max(rho.n_qubits, obs.n_qubits)
+
+    total = 0
+
+    small, large = (rho._data, obs._data) if len(rho) < len(obs) else (obs._data, rho._data)
+
+    for pauli_unit, coeff_small in small.items():
+        if pauli_unit in large:
+            coeff_large = large[pauli_unit]
+
+            total += coeff_small * coeff_large * (2**n_qubits)
+
+    return total
 
 
 def frob(a: Tensor, b: Tensor) -> Tensor:

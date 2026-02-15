@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .. import Operator
 
 @register
-class HamiltonianOperator:
+class HamOp:
     def __init__(self, *args):
         """Initialize a Hamiltonian operator from PauliString instances, tuples, or other HamOp instances."""
 
@@ -28,12 +28,12 @@ class HamiltonianOperator:
             elif is_type(arg, 'PauliString'):
                 self._add_term(arg)
 
-            elif isinstance(arg, HamiltonianOperator):
+            elif isinstance(arg, HamOp):
                 for pauli_string, coeff in arg._data.items():
                     self._add_term(pauli_string, coeff)
 
     def __add__(self, other: Operator) -> Operator:
-        result = HamiltonianOperator(self, other)
+        result = HamOp(self, other)
 
         return result.simplify()
 
@@ -46,7 +46,7 @@ class HamiltonianOperator:
             The resultant operator.
         """
 
-        result = HamiltonianOperator()
+        result = HamOp()
 
         for operator, coeff in self._data.items():
             result._add_term(operator, coeff(t, **kwargs) if callable(coeff) else coeff)
@@ -61,10 +61,10 @@ class HamiltonianOperator:
             return self.__scalar_mul(other)
 
         if is_type(other, 'PauliString'):
-            other = HamiltonianOperator(other)
+            other = HamOp(other)
 
-        if isinstance(other, HamiltonianOperator):
-            result = HamiltonianOperator()
+        if isinstance(other, HamOp):
+            result = HamOp()
 
             for p1, c1 in self._data.items():
                 for p2, c2 in other._data.items():
@@ -88,9 +88,9 @@ class HamiltonianOperator:
             return self.__scalar_mul(other)
 
         if is_type(other, 'PauliString'):
-            return HamiltonianOperator(other) * self
+            return HamOp(other) * self
 
-        if isinstance(other, HamiltonianOperator):
+        if isinstance(other, HamOp):
             return other * self
 
     def __str__(self):
@@ -152,9 +152,9 @@ class HamiltonianOperator:
         return ''.join(label_parts)
 
     def __sub__(self, other):
-        return HamiltonianOperator(self, -other)
+        return HamOp(self, -other)
 
-    def copy(self) -> HamiltonianOperator:
+    def copy(self) -> HamOp:
         """Create a shallow copy of the operator.
 
         Returns
@@ -163,10 +163,30 @@ class HamiltonianOperator:
             A new instance containing the same terms as `self`.
         """
 
-        result = HamiltonianOperator()
+        result = HamOp()
         result._data = self._data.copy()
 
         return result
+
+    def expected(self, obs: PauliString, n_qubits: int = None):
+        if n_qubits is None:
+            n_qubits = self.n_qubits
+
+        # We initialize the total with the correct batch size
+        total = torch.zeros(self.batch_count, dtype=torch.complex128)
+
+        # Tr(P_i * P_j) = 2^n if P_i == P_j, else 0
+        # Note: obs is a single PauliString (unit operator)
+        for unit_pauli, coeff in self._data.items():
+            # Compare bitmasks to see if they represent the same Pauli string
+            # We check if unit_pauli (from H) is identical to obs
+            if unit_pauli == obs:
+                # P_i * P_i = Identity. Tr(Identity) = 2^n.
+                # We must also account for any internal phase/coefficient
+                # the PauliString might carry (usually 1.0 for unit strings).
+                total += coeff * (2**n_qubits)
+
+        return total
 
     def power(self, n: int) -> Operator:
         """Compute the n-th power of the operator.
@@ -202,7 +222,7 @@ class HamiltonianOperator:
 
         return result
 
-    def static_commuting_propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> HamiltonianOperator:
+    def static_commuting_propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> HamOp:
         """Compute the unitary propagator exp(-i * H * h) for a static, commuting operator.
 
         Parameters
@@ -231,7 +251,7 @@ class HamiltonianOperator:
 
         return result
 
-    def simplify(self) -> HamiltonianOperator | PauliString:
+    def simplify(self) -> HamOp | PauliString:
         """Reduce the operator to a PauliString if it contains only one static term.
 
         Returns
@@ -320,7 +340,7 @@ class HamiltonianOperator:
         return tuple(coeff for coeff in self._data.values())
 
     @property
-    def H(self) -> HamiltonianOperator:
+    def H(self) -> HamOp:
         """The Hermititan adjoint."""
 
         result = None
@@ -453,7 +473,7 @@ class HamiltonianOperator:
 
         other = tensorize(other)
 
-        result = HamiltonianOperator()
+        result = HamOp()
 
         result._data = {
             pauli_string: coeff * other

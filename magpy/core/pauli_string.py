@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 import torch
 from torch import Tensor
 
-from .hamiltonian_operator import HamiltonianOperator
+from .hamiltonian_operator import HamOp
 from .._registry import register, is_type
 from ..types import Scalar
 from .._context import get_print_identities
@@ -48,7 +48,7 @@ class PauliString:
         self._coeff: Tensor = tensorize(coeff)
 
     def __add__(self, other: Operator) -> Operator:
-        return HamiltonianOperator(self, other).simplify()
+        return HamOp(self, other).simplify()
 
     def __call__(self, t: Tensor = None, **kwargs) -> PauliString:
         return self
@@ -89,7 +89,7 @@ class PauliString:
             return other.__rmul__(self)
 
         if callable(other):
-            return HamiltonianOperator((other, self))
+            return HamOp((other, self))
 
         return NotImplemented
 
@@ -111,7 +111,7 @@ class PauliString:
             return other * self
 
         if callable(other):
-            return HamiltonianOperator((other, self))
+            return HamOp((other, self))
 
     def __str__(self):
         label = []
@@ -146,7 +146,7 @@ class PauliString:
         return f"{format_number(self._coeff)}*{operator_string}"
 
     def __sub__(self, other: Operator) -> Operator:
-        return HamiltonianOperator(self, -other)
+        return HamOp(self, -other)
 
     def as_unit_operator(self) -> PauliString:
         """Create a copy of the operator with unit coefficient.
@@ -158,6 +158,22 @@ class PauliString:
         """
 
         return PauliString(self._x_mask, self._z_mask)
+
+    def expected(self, obs: PauliString, n_qubits: int = None):
+        if n_qubits is None:
+            n_qubits = max(self.n_qubits, obs.n_qubits)
+
+        total = 0
+
+        small, large = (self._data, obs._data) if len(self) < len(obs) else (obs._data, self._data)
+
+        for pauli_unit, coeff_small in small.items():
+            if pauli_unit in large:
+                coeff_large = large[pauli_unit]
+
+                total += coeff_small * coeff_large * (2**n_qubits)
+
+        return total
 
     def copy(self) -> PauliString:
         """Create a shallow copy of the operator.
@@ -248,7 +264,7 @@ class PauliString:
 
         return scale * result
 
-    def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> HamiltonianOperator:
+    def propagator(self, h: Tensor = torch.tensor(1, dtype=torch.complex128)) -> HamOp:
         """Compute the unitary propagator exp(-i * P * h) of the operator.
 
         Parameters

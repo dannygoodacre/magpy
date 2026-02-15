@@ -1,4 +1,6 @@
-"""This file implements the Magnus expansion to solve the Liouville-von Neumann
+"""High-order geometric integration for Hamiltonian evolution.
+
+This module implements the Magnus expansion to solve the Liouville-von Neumann
 equation, using the quadrature formulae described by Iserles et al.
 
 References
@@ -19,10 +21,11 @@ import expsolve as es
 import torch
 
 from ._context import get_device
-from .core import PauliString, HamiltonianOperator
+from .core import PauliString, HamOp
 from ._glq import _KNOTS_3, _WEIGHTS_3
 from ._integrate import integral_from_sample, antisymmetric_double_integral_from_sample
 from .linalg import commutes
+from ._splitting import s4_step
 
 if TYPE_CHECKING:
     from . import Operator
@@ -108,16 +111,10 @@ def evolve(H: Operator,
             return u * rho * u.H
 
     else:
-        # def stepper(t, h, rho):
-        #     omega = two_term_magnus_step(H, t, h)
+        def stepper(t, h, rho):
+            omega = two_term_magnus_step(H, t, h)
 
-        #     # u = omega.propagator()
-        #     u = torch.matrix_exp(-1j * omega.tensor())
-
-        #     return u * rho * u.H
-
-        # TODO: Splitting method here.
-        return
+            return s4_step(rho, list(omega.terms), 1)
 
     rho, obsvalues, states = es.solvediffeq(torch.ones(batch_count) * rho0,
                                             tlist,
@@ -135,7 +132,7 @@ def first_term_pauli(pauli_unit: PauliString, coeff, h):
     return 0.5 * h * torch.sum(_WEIGHTS_3 * coeff) * pauli_unit
 
 
-def two_term_magnus_step(H: HamiltonianOperator, t: float, h: float) -> HamiltonianOperator:
+def two_term_magnus_step(H: HamOp, t: float, h: float) -> HamOp:
     pauli_strings = H.pauli_strings
     coeffs = H.coeffs
 
@@ -148,7 +145,7 @@ def two_term_magnus_step(H: HamiltonianOperator, t: float, h: float) -> Hamilton
         for coeff in coeffs
     ]
 
-    result = HamiltonianOperator()
+    result = HamOp()
 
     for i in range(n):
         result += integral_from_sample(f_nodes[i], h) * pauli_strings[i]
@@ -161,6 +158,6 @@ def two_term_magnus_step(H: HamiltonianOperator, t: float, h: float) -> Hamilton
 
                 result += -0.5 \
                     * antisymmetric_double_integral_from_sample(f_nodes[i], f_nodes[j], h) \
-                    * pauli_strings[i]*pauli_strings[j] - pauli_strings[j]*pauli_strings[i]
+                    * (pauli_strings[i]*pauli_strings[j] - pauli_strings[j]*pauli_strings[i])
 
     return result

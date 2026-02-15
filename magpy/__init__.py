@@ -1,5 +1,5 @@
 from .core.function_product import FunctionProduct
-from .core.hamiltonian_operator import HamiltonianOperator
+from .core.hamiltonian_operator import HamOp
 from .core.pauli_string import PauliString, X, Y, Z, I
 from .linalg import commutes, frob, msqrt_herm, timegrid, uhlmann
 from .system import evolve
@@ -7,14 +7,14 @@ from .system import evolve
 
 __all__ = [
     'FunctionProduct',
-    'HamiltonianOperator',
+    'HamOp',
     'PauliString', 'X', 'Y', 'Z', 'I',
     'commutes', 'frob', 'msqrt_herm', 'timegrid', 'uhlmann',
     'evolve'
 ]
 
 
-type Operator = PauliString | HamiltonianOperator
+type Operator = PauliString | HamOp
 
 
 def set_default_device(device: str):
