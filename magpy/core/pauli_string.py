@@ -3,11 +3,14 @@ from typing import TYPE_CHECKING
 import torch
 from torch import Tensor
 
+from .hamiltonian_operator import HamOp
+from .._registry import register, is_type
 from ..types import SCALAR_TYPES
+from .._context import get_print_identities
+from .._utils import format_number
 
 if TYPE_CHECKING:
     from .. import Operator
-    from .hamiltonian_operator import HamOp
 
 
 def X(index: int = 0) -> PauliString:
@@ -26,6 +29,7 @@ def I() -> PauliString:
     return PauliString(0, 0)
 
 
+@register
 class PauliString:
     _X_MATRIX = torch.tensor([[0, 1], [1, 0]], dtype=torch.complex128)
 
@@ -44,11 +48,7 @@ class PauliString:
         self._coeff: Tensor = tensorize(coeff)
 
     def __add__(self, other: Operator) -> Operator:
-        from .hamiltonian_operator import HamOp
-
-        result = HamOp(self, other)
-
-        return result.simplify()
+        return HamOp(self, other).simplify()
 
     def __call__(self, t: Tensor = None, **kwargs) -> PauliString:
         return self
@@ -68,9 +68,10 @@ class PauliString:
             and self.n_qubits == other.n_qubits
 
     def __mul__(self, other: SCALAR_TYPES | Operator) -> Operator:
-        from .._utils import tensorize
 
         if isinstance(other, SCALAR_TYPES):
+            from .._utils import tensorize
+
             return PauliString(
                 self._x_mask,
                 self._z_mask,
@@ -81,15 +82,13 @@ class PauliString:
             return PauliString(
                 self._x_mask ^ other._x_mask,
                 self._z_mask ^ other._z_mask,
-                self._coeff * other._coeff * PauliString.__phase_factor(self, other)
+                self._coeff * other._coeff * PauliString._phase_factor(self, other)
             )
 
-        if hasattr(other, '_data'):
+        if is_type(other, 'HamOp'):
             return other.__rmul__(self)
 
         if callable(other):
-            from .hamiltonian_operator import HamOp
-
             return HamOp((other, self))
 
         return NotImplemented
@@ -105,21 +104,16 @@ class PauliString:
         return self.power(n)
 
     def __rmul__(self, other: SCALAR_TYPES | Operator) -> Operator:
-        if isinstance(other, SCALAR_TYPES) or hasattr(other, '_x_mask'):
+        if isinstance(other, SCALAR_TYPES) or is_type(other, 'PauliString'):
             return self * other
 
-        if hasattr(other, '_data'):
+        if is_type(other, 'HamOp'):
             return other * self
 
         if callable(other):
-            from .hamiltonian_operator import HamOp
-
             return HamOp((other, self))
 
     def __str__(self):
-        from .._context import get_print_identities
-        from .._utils import format_number
-
         label = []
 
         for i in range(self.n_qubits):
@@ -152,8 +146,6 @@ class PauliString:
         return f"{format_number(self._coeff)}*{operator_string}"
 
     def __sub__(self, other: Operator) -> Operator:
-        from .hamiltonian_operator import HamOp
-
         return HamOp(self, -other)
 
     def as_unit_operator(self) -> PauliString:
@@ -298,7 +290,7 @@ class PauliString:
 
     @property
     def n_qubits(self) -> int:
-        """The total number of qubits the operatorupon."""
+        """The total number of qubits the operator acts upon."""
 
         return max(self._x_mask.bit_length(), self._z_mask.bit_length(), 1)
 
@@ -387,7 +379,7 @@ class PauliString:
         return PauliString(x_mask, z_mask, coeff, len(label))
 
     @staticmethod
-    def __phase_factor(a: PauliString, b: PauliString) -> complex:
+    def _phase_factor(a: PauliString, b: PauliString) -> complex:
         """Calculate the phase factor accumulated from the product of two PauliStrings.
 
         Parameters

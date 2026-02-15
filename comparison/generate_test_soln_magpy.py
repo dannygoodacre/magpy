@@ -6,7 +6,7 @@ for k in range(4, 17):
     print(k)
 
     tlist = mp.timegrid(start, end, 0.5**k)
-    
-    states = mp.evolve(H, rho0, tlist)
-    
+
+    states = mp.old_evolve(H, rho0, tlist)
+
     torch.save(states, f'test_data_2/magpy_{k}.pt')

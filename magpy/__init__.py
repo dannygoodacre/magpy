@@ -1,10 +1,10 @@
 from .core.function_product import FunctionProduct
 from .core.hamiltonian_operator import HamOp
-from .core.linalg import frob, timegrid, msqrt_herm, uhlmann
+from .linalg import frob, timegrid, msqrt_herm, uhlmann
 from .core.pauli_string import PauliString, X, Y, Z, I
 
+from .system import old_evolve
 from .system import evolve
-from .new_system import new_evolve
 
 
 type Operator = PauliString | HamOp
@@ -15,7 +15,7 @@ __all__ = [
     'FunctionProduct',
     'HamOp',
     'expm', 'frob', 'kron', 'msqrt_herm', 'timegrid', 'uhlmann',
-    'evolve', 'new_evolve',
+    'old_evolve', 'old_evolve',
     'Operator'
 ]
 

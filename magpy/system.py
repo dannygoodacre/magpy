@@ -13,19 +13,21 @@ References
 """
 
 
-from math import sqrt
-from numbers import Number
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
-import torch
 import expsolve as es
+import torch
 
-from .core import PauliString, I, HamOp
 from ._context import get_device
+from .core import PauliString, HamOp
+from ._glq import _KNOTS_3, _WEIGHTS_3
+from ._integrate import integral_from_sample, antisymmetric_double_integral_from_sample
+from .linalg import commutes
 
-
-_KNOTS = torch.tensor([-sqrt(3/5), 0, sqrt(3/5)], dtype=torch.complex128)
-_WEIGHTS = torch.tensor([5/9, 8/9, 5/9])
+if TYPE_CHECKING:
+    from . import Operator
+    from torch import Tensor
+    from .core import PauliString
 
 
 def _update_device():
@@ -35,99 +37,86 @@ def _update_device():
     _WEIGHTS = _WEIGHTS.to(get_device())
 
 
-def evolve(H: HamOp,
+def evolve(H: Operator,
            rho0: PauliString,
-           tlist: torch.Tensor,
-           n_qubits: int = None,
-           observables: dict[str, Callable[[torch.Tensor, Number], torch.Tensor]] = {},
-           store_intermediate: bool = False) -> tuple[torch.Tensor, dict[str, torch.Tensor], torch.Tensor | None]:
-    """Liouville-von Neumann evolution of the density matrix under a given Hamiltonian.
-
-    TODO: Update this docstring.
-
-    Evolve the density matrix `rho0` using the Hamiltonian `H`.
-
-    The result is the density matrix evaluated at each time point in `tlist`.
-
-    When the Hamiltonian describes a batch system, the respective system's result is
-    accessed by indexing the result accordingly.
-
-    The number of qubits `n_qubits` determines the number of qubits to use in each
-    batch of the simulation. By default, MagPy will infer this value.
+           tlist: Tensor,
+           observables: dict[str, Callable[[Tensor, Tensor], Tensor]] = {},
+           store_intermediate: bool = False) -> tuple[Operator, dict[str, Tensor], Operator | None]:
+    """Liouville-von Neumann evolution of a density operator under a given Hamiltonian.
 
     Examples
     --------
-    >>> H = torch.sin*X() + torch.tensor([1,2], dtype=torch.complex128)*Y()
-    >>> rho0 = X()
-    >>> tlist = timegrid(0, 10, 0.01)
-    >>> states = evolve(H, rho0, tlist)
-    >>> y1 = frobenius(states[0], Y().matrix())
-    >>> y2 = frobenius(states[1], Y().matrix())
-
-    >>> H = torch.cos*Y() + torch.sin*X(2) + Y()
-    >>> rho0 = X(2)
-    >>> tlist = timegrid(0, 10, 0.01)
-    >>> states = evolve(H, rho0, tlist)
-    >>> y2 = frobenius(states[0], Y(2).matrix())
+    >>> H = torch.sin*X()
 
     Parameters
     ----------
-    H : HamiltonianOperator
-        The Hamiltonian operator
+    H : Operator
+        Hamiltonian operator
     rho0 : PauliString
-        The initial density matrix
+        Initial density operator
     tlist : Tensor
-        The list of times
-    n_qubits : int, optional
-        The number of qubits, by default None
+        Discretized points in time
+    observables : dict[str, Callable[[Tensor, Tensor], Tensor]], optional
+        A mapping of labels to functions computing observable quantities,
+        by default {}
+    store_intermediate : bool, optional
+        Whether to store the intermediate states of the evolving system, by default False
 
     Returns
     -------
-    Tensor
-        The states of the system(s) over time
+    tuple[Operator, dict[str, Operator], Operator | None]
+        The final state, the computed observables, and the optional intermediate states
     """
-
-    # TODO: Can we optimise for PS instead of this?
-    if isinstance(H, PauliString):
-        H = HamOp([1, H])
-
-    if n_qubits is None:
-        n_qubits = H.n_qubits
 
     batch_count = H.batch_count
 
-    # if batch_count > 1:
-    #     rho0 = torch.stack([rho0.matrix(n_qubits)] * batch_count)
-    # else:
-    #     rho0 = rho0.matrix(n_qubits)
+    h = tlist[1] - tlist[0]
 
-    if H.is_constant():
-        h = tlist[1] - tlist[0]
-
-        u = H.static_commuting_progagator(h)
-
-        ut = u.H
+    if isinstance(H, PauliString):
+        u = H.propagator(h)
+        uH = u.H
 
         def stepper(t, h, rho):
-            return u * rho * ut
+            return u * rho * uH
 
-    else:
+    if H.is_static and H.is_commuting:
+        u = H.static_commuting_propagator(h)
+        uH = u.H
+
         def stepper(t, h, rho):
-            knots = t + 0.5*h*(1 + _KNOTS)
+            return u * rho * uH
 
-            first_term = _first_term(H, knots, h)
-            second_term = _second_term(H.coeffs(), H.pauli_operators(), knots, h)
+    elif H.is_disjoint:
+        def stepper(t, h, rho):
+            knots = t + 0.5*h*(1 + _KNOTS_3)
 
-            if second_term == 0:
-                u = first_term.propagator()
-            else:
-                foo = first_term - 0.5*second_term
-                print(foo)
-                u = foo.propagator()
+            propagators = [
+                first_term_pauli(unit_pauli, coeff(knots), h).propagator(h)
+                for unit_pauli, coeff in H._data.items()
+            ]
+
+            u = propagators[0]
+
+            for p in propagators[1:]:
+                u *= p
 
             return u * rho * u.H
 
-    rho, obsvalues, states = es.solvediffeq(torch.ones(H.batch_count)*rho0, tlist, stepper, observables, store_intermediate)
+    else:
+        def stepper(t, h, rho):
+            omega = two_term_magnus_step(H, t, h)
+
+            # TODO: Splitting method here, or brute-force expm.
+            # u = omega.propagator()
+            u = torch.matrix_exp(-1j * omega.tensor())
+
+            return u * rho * u.H
+
+    rho, obsvalues, states = es.solvediffeq(torch.ones(batch_count) * rho0,
+                                            tlist,
+                                            stepper,
+                                            observables,
+                                            store_intermediate)
 
     if batch_count > 1:
         return rho, obsvalues, states if store_intermediate else None
@@ -135,50 +124,36 @@ def evolve(H: HamOp,
     return rho, {k: v[:1, :] for k, v in obsvalues.items()}, states if store_intermediate else None
 
 
-def _first_term(H: HamOp, knots, h):
-    result = 0
-
-    for f, p in H.unpack(unit_ops=False):
-        foo = torch.sum(_WEIGHTS * (f(knots) if callable(f) else f))
-        result += foo * p
-
-    return 0.5 * h * result
+def first_term_pauli(pauli_unit: PauliString, coeff, h):
+    return 0.5 * h * torch.sum(_WEIGHTS_3 * coeff) * pauli_unit
 
 
-def _second_term(funcs, ops, knots, h):
-    result = 0
+def two_term_magnus_step(H: HamOp, t: float, h: float) -> HamOp:
+    pauli_strings = H.pauli_strings
+    coeffs = H.coeffs
 
-    n = len(funcs)
+    n = len(pauli_strings)
+
+    knots = t + 0.5*h*(1 + _KNOTS_3)
+
+    f_nodes = [
+        coeff(knots) if callable(coeff) else coeff * torch.ones_like(knots)
+        for coeff in coeffs
+    ]
+
+    result = HamOp()
 
     for i in range(n):
-        for j in range(i + 1, n):
-            if ops[i] == I() or ops[j] == I():
-                continue
+        result += integral_from_sample(f_nodes[i], h) * pauli_strings[i]
 
-            if callable(funcs[i]):
-                fi0 = funcs[i](knots[0])
-                fi1 = funcs[i](knots[1])
-                fi2 = funcs[i](knots[2])
+    if not H.is_commuting:
+        for i in range(n):
+            for j in range(i + 1, n):
+                if commutes(pauli_strings[i], pauli_strings[j]):
+                    continue
 
-            else:
-                fi0 = funcs[i]
-                fi1 = funcs[i]
-                fi2 = funcs[i]
+                result += -0.5 \
+                    * antisymmetric_double_integral_from_sample(f_nodes[i], f_nodes[j], h) \
+                    * pauli_strings[i]*pauli_strings[j] - pauli_strings[j]*pauli_strings[i]
 
-            if callable(funcs[j]):
-                fj0 = funcs[j](knots[0])
-                fj1 = funcs[j](knots[1])
-                fj2 = funcs[j](knots[2])
-
-            else:
-                fj0 = funcs[j]
-                fj1 = funcs[j]
-                fj2 = funcs[j]
-
-            coeff = 2*(fi0*fj1 - fi1*fj0) + (fi0*fj2 - fi2*fj0) + 2*(fi1*fj2 - fi2*fj1)
-
-            op = ops[i]*ops[j] - ops[j]*ops[i]
-
-            result += coeff * op
-
-    return (sqrt(15) / 54) * h**2 * result
+    return result

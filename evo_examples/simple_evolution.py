@@ -1,4 +1,4 @@
-from magpy import X, Y, Z, I, new_evolve, FunctionProduct as FP, timegrid, frob
+from magpy import X, Y, Z, I, evolve, FunctionProduct as FP, timegrid, frob
 import matplotlib.pyplot as plt
 
 H = (3,4,5)*Y()
@@ -6,7 +6,7 @@ rho0 = X()
 tlist = timegrid(0, 5, 0.01)
 observables = {'x': lambda u, t: frob(u.tensor(), X().tensor())}
 
-_, obsvalue, intermediate = new_evolve(H, rho0, tlist, observables=observables, store_intermediate=True)
+_, obsvalue, intermediate = evolve(H, rho0, tlist, observables=observables, store_intermediate=True)
 
 print(len(intermediate))
 

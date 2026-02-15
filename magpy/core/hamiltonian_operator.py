@@ -5,13 +5,14 @@ from typing import Callable, TYPE_CHECKING
 import torch
 from torch import Tensor
 
+from .._registry import is_type, register
 from ..types import SCALAR_TYPES
 
 if TYPE_CHECKING:
     from .pauli_string import PauliString
     from .. import Operator
 
-
+@register
 class HamOp:
     def __init__(self, *args):
         """Initialize a Hamiltonian operator from PauliString instances, tuples, or other HamOp instances."""
@@ -24,7 +25,7 @@ class HamOp:
 
                 self._add_term(pauli_string, scale)
 
-            elif hasattr(arg, '_x_mask'):
+            elif is_type(arg, 'PauliString'):
                 self._add_term(arg)
 
             elif isinstance(arg, HamOp):
@@ -59,7 +60,7 @@ class HamOp:
         if isinstance(other, SCALAR_TYPES):
             return self.__scalar_mul(other)
 
-        if hasattr(other, '_x_mask'):
+        if is_type(other, 'PauliString'):
             other = HamOp(other)
 
         if isinstance(other, HamOp):
@@ -86,7 +87,7 @@ class HamOp:
         if isinstance(other, SCALAR_TYPES):
             return self.__scalar_mul(other)
 
-        if hasattr(other, '_x_mask'):
+        if is_type(other, 'PauliString'):
             return HamOp(other) * self
 
         if isinstance(other, HamOp):
@@ -301,7 +302,7 @@ class HamOp:
         batch = 1
         for coeff in self._data.values():
 
-            val = coeff.scale if hasattr(coeff, '_functions') else coeff
+            val = coeff.scale if is_type(coeff, 'FunctionProduct') else coeff
 
             if isinstance(val, Tensor):
                 if val.ndim > 0:
@@ -340,7 +341,7 @@ class HamOp:
         if len(self._data) <= 1:
             return True
 
-        from .._utils import commutes
+        from ..linalg import commutes
 
         operators = list(self._data.keys())
 

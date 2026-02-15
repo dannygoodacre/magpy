@@ -2,7 +2,7 @@ from math import sqrt
 
 import torch
 
-from magpy import HamOp, X, Y, Z, I, FunctionProduct as FP, timegrid, frob, new_evolve, PauliString
+from magpy import HamOp, X, Y, Z, I, FunctionProduct as FP, timegrid, frob, evolve, PauliString
 import matplotlib.pyplot as plt
 
 def f(t): return torch.sin(t)
@@ -26,7 +26,7 @@ observables = {
     'x0': lambda u, _: frob(u.tensor(), X().tensor(n_qubits=2)),
 }
 
-_, obsvalue, _ = new_evolve(H, rho0, tlist, observables=observables)
+_, obsvalue, _ = evolve(H, rho0, tlist, observables=observables)
 
 plt.plot(tlist, obsvalue['x0'][0])
 plt.show()

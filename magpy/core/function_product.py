@@ -1,14 +1,18 @@
 from __future__ import annotations
-from numbers import Number
-from typing import Callable
+from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor
 
+from .._registry import register, is_type
 from ..types import SCALAR_TYPES
 from .._utils import format_number, tensorize
 
+if TYPE_CHECKING:
+    from typing import Callable
 
+
+@register
 class FunctionProduct:
 
     def __init__(self, *args):
@@ -46,7 +50,7 @@ class FunctionProduct:
         return self._scale == other._scale and self._functions == other._functions
 
     def __mul__(self, other):
-        if hasattr(other, '_x_mask') or hasattr(other, '_data'):
+        if is_type(other, 'PauliString') or is_type(other, 'HamOp'):
             return other.__rmul__(self)
 
         result = FunctionProduct(self)
@@ -125,5 +129,5 @@ class FunctionProduct:
         return '*'.join(f.__name__ for f in self._functions)
 
     @property
-    def scale(self) -> Number | Tensor:
+    def scale(self) -> Tensor:
         return self._scale

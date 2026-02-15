@@ -1,33 +1,13 @@
 from numbers import Number
+from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor
 
-from .core.pauli_string import PauliString
-from .types import SCALAR_TYPES
-
 from ._context import get_print_precision
 
-
-def conjugate(x: Number | Tensor):
-    try:
-        return x.conjugate()
-
-    except AttributeError:
-        return x.conj()
-
-
-def commutator(a: PauliString, b: PauliString) -> bool:
-    return a*b - b*a
-
-
-def commutes(a: PauliString, b: PauliString) -> bool:
-    # TODO: Document
-    # symplectic inner product: (Z1 & X2) ^ (X1 & Z2)
-
-    check = (a._z_mask & b._x_mask) ^ (a._x_mask & b._z_mask)
-
-    return check.bit_count() % 2 == 0
+if TYPE_CHECKING:
+    from .types import SCALAR_TYPES
 
 
 def format_number(n: Number | Tensor) -> str:

@@ -9,8 +9,19 @@ References
 
 """
 
+from typing import TYPE_CHECKING
+
 import torch
-from torch import Tensor
+
+if TYPE_CHECKING:
+    from torch import Tensor
+    from .core.pauli_string import PauliString
+
+
+def commutes(a: PauliString, b: PauliString) -> bool:
+    check = (a._z_mask & b._x_mask) ^ (a._x_mask & b._z_mask)
+
+    return check.bit_count() % 2 == 0
 
 
 def frob(a: Tensor, b: Tensor) -> Tensor:
