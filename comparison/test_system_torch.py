@@ -16,7 +16,7 @@ def g(t):
     return e(t) * torch.imag(w(t))
 
 H = f*mp.X() + g*mp.Y() + om*mp.Z()
-rho0 = 0.5*(mp.Id() + mp.X())
+rho0 = 0.5*(mp.I() + mp.X())
 
 start = 0
 end = 20

@@ -51,6 +51,9 @@ class PauliString:
         return HamOp(self, other).simplify()
 
     def __call__(self, t: Tensor = None, **kwargs) -> PauliString:
+        """PauliStrings are static by definition. These parameters are here to make the
+        interface consistent with that of HamOp; however, they do nothing here."""
+
         return self
 
     def __copy__(self):
@@ -159,19 +162,22 @@ class PauliString:
 
         return PauliString(self._x_mask, self._z_mask)
 
-    def expected(self, obs: PauliString, n_qubits: int = None):
-        if n_qubits is None:
-            n_qubits = max(self.n_qubits, obs.n_qubits)
+    def expected(self, obs: Operator, n_qubits: int = None):
+        n_qubits = n_qubits or max(self.n_qubits, obs.n_qubits)
 
-        total = 0
+        dimension = 2**n_qubits
 
-        small, large = (self._data, obs._data) if len(self) < len(obs) else (obs._data, self._data)
+        obs_data = obs._data if isinstance(obs, HamOp) else {obs: obs.coeff}
+
+        total = torch.zeros(self.batch_count, dtype=torch.complex128)
+
+        small, large = (self._data, obs_data) if len(self._data) < len(obs_data) else (obs_data, self._data)
 
         for pauli_unit, coeff_small in small.items():
             if pauli_unit in large:
                 coeff_large = large[pauli_unit]
 
-                total += coeff_small * coeff_large * (2**n_qubits)
+                total += coeff_small * coeff_large * dimension
 
         return total
 

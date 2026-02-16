@@ -168,23 +168,22 @@ class HamOp:
 
         return result
 
-    def expected(self, obs: PauliString, n_qubits: int = None):
-        if n_qubits is None:
-            n_qubits = self.n_qubits
+    def expected(self, obs: Operator, n_qubits: int = None):
+        n_qubits = n_qubits or max(self.n_qubits, obs.n_qubits)
 
-        # We initialize the total with the correct batch size
+        dimension = 2**n_qubits
+
+        obs_data = obs._data if isinstance(obs, HamOp) else {obs: obs.coeff}
+
         total = torch.zeros(self.batch_count, dtype=torch.complex128)
 
-        # Tr(P_i * P_j) = 2^n if P_i == P_j, else 0
-        # Note: obs is a single PauliString (unit operator)
-        for unit_pauli, coeff in self._data.items():
-            # Compare bitmasks to see if they represent the same Pauli string
-            # We check if unit_pauli (from H) is identical to obs
-            if unit_pauli == obs:
-                # P_i * P_i = Identity. Tr(Identity) = 2^n.
-                # We must also account for any internal phase/coefficient
-                # the PauliString might carry (usually 1.0 for unit strings).
-                total += coeff * (2**n_qubits)
+        small, large = (self._data, obs_data) if len(self._data) < len(obs_data) else (obs_data, self._data)
+
+        for pauli_unit, coeff_small in small.items():
+            if pauli_unit in large:
+                coeff_large = large[pauli_unit]
+
+                total += coeff_small * coeff_large * dimension
 
         return total
 
