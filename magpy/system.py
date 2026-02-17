@@ -47,14 +47,19 @@ def evolve(H: Operator,
            store_intermediate: bool = False) -> tuple[Operator, dict[str, Tensor], Operator | None]:
     """Liouville-von Neumann evolution of a density operator under a given Hamiltonian.
 
-    Examples
-    --------
-    >>> H = ...
-    >>> rho0 = ...
+    Example
+    -------
+    >>> H = sin*X() + (lambda t: 0.5 * t)*Y()
+    >>> rho0 = 0.5 * (I() + Z())
     >>> tlist = mp.timegrid(0, 10, 0.5**6)
-    >>> observables = { ... }
-    >>> rhoT, obs_values, _ = mp.evolve(H, rho0, tlist, observables, store_intermediate = False)
-    >>> TODO
+    >>> observables = {
+    ...     'x': lambda rho, _: rho.expected(X()),
+    ...     'y': lambda rho, _: rho.expected(Y())
+    ... }
+    >>> _, obs_values, _ = mp.evolve(H, rho0, tlist, observables, store_intermediate = False)
+    >>> plt.plot(tlist, obs_values['x'][0])
+    >>> plt.plot(tlist, obs_values['y'][0])
+    >>> plt.show()
 
     Parameters
     ----------

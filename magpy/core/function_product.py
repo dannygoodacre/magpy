@@ -14,6 +14,17 @@ if TYPE_CHECKING:
 
 @register
 class FunctionProduct:
+    """A product of functions
+
+    Examples
+    --------
+    >>> from magpy import FunctionProduct as FP
+    >>> f = FP() * 3 * torch.sin * torch.cos
+    >>> f
+    3*sin*cos
+    >>> f(torch.tensor(5))
+    tensor(-0.8160+0.j, dtype=torch.complex128)
+    """
 
     def __init__(self, *args):
         self._functions: dict[Callable, int] = {}
@@ -84,28 +95,36 @@ class FunctionProduct:
 
         return result
 
-    def __str__(self):
+    def __repr__(self):
         if not self._functions:
             return format_number(self._scale)
 
         parts = []
 
-        if isinstance(self._scale, Tensor) or self._scale != 1.0:
+        is_unity = False
+        if torch.is_tensor(self._scale):
+            if self._scale.ndim == 0 and self._scale == 1.0:
+                is_unity = True
+
+        elif self._scale == 1.0:
+            is_unity = True
+
+        if not is_unity:
             parts.append(format_number(self._scale))
 
         for f, power in self._functions.items():
-
             name = getattr(f, '__name__', 'f')
-
             if name == '<lambda>':
-                # TODO: Find a better way to handle this. I don't like it.
                 name = 'λ'
 
+            # Avoid showing power of 1
             parts.append(f'{name}^{power}' if power > 1 else name)
 
         return '*'.join(parts)
 
     __rmul__ = __mul__
+
+    __str__ = __repr__
 
     @property
     def is_empty(self) -> bool:

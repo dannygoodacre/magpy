@@ -14,6 +14,32 @@ if TYPE_CHECKING:
 
 @register
 class HamOp:
+    """A Hamiltonian operator.
+
+    A sum of Pauli operators with (batch) constant or function coefficients.
+
+    Examples
+    --------
+    >>> H = (1, 2)*X() + torch.sin*Y(1)
+    >>> H
+    (1, 2)*X0 + 1*sin*Y1
+    >>> G = H(torch.tensor(3))
+    >>> G
+    (1, 2)*X0 + 0.141120001673698*Y1
+    >>> G.tensor()
+    tensor([[[0.+0.0000j, 0.-0.1411j, 1.+0.0000j, 0.+0.0000j],
+             [0.+0.1411j, 0.+0.0000j, 0.+0.0000j, 1.+0.0000j],
+             [1.+0.0000j, 0.+0.0000j, 0.+0.0000j, 0.-0.1411j],
+             [0.+0.0000j, 1.+0.0000j, 0.+0.1411j, 0.+0.0000j]],
+
+            [[0.+0.0000j, 0.-0.1411j, 2.+0.0000j, 0.+0.0000j],
+             [0.+0.1411j, 0.+0.0000j, 0.+0.0000j, 2.+0.0000j],
+             [2.+0.0000j, 0.+0.0000j, 0.+0.0000j, 0.-0.1411j],
+             [0.+0.0000j, 2.+0.0000j, 0.+0.1411j, 0.+0.0000j]]],
+           dtype=torch.complex128)
+
+    """
+
     def __init__(self, *args):
         """Initialize a Hamiltonian operator from PauliString instances, tuples, or other HamOp instances."""
 
@@ -83,6 +109,64 @@ class HamOp:
     def __radd__(self, other):
         return self.__add__(other)
 
+    def __repr__(self):
+        if not self._data:
+            return '0'
+
+        label_parts = []
+
+        items = list(self._data.items())
+
+        for i, (term, coeff) in enumerate(items):
+            is_negative = False
+            is_unity = False
+
+            if callable(coeff):
+                c_str = str(coeff)
+
+            else:
+                from .._utils import format_number
+                c_str = format_number(coeff)
+
+                is_tensor = torch.is_tensor(coeff)
+                if not is_tensor or coeff.ndim == 0:
+                    val = coeff.item() if is_tensor else coeff
+
+                    if val == 1:
+                        is_unity = True
+
+                    elif val == -1:
+                        is_unity = True
+                        is_negative = True
+
+            if not is_unity and not callable(coeff):
+                if isinstance(coeff, (int, float, complex)):
+                    is_negative = (coeff.real < 0) if isinstance(coeff, complex) else (coeff < 0)
+
+                elif torch.is_tensor(coeff) and coeff.ndim == 0:
+                    is_negative = coeff.real < 0 if coeff.is_complex() else coeff < 0
+
+            if is_unity:
+                display_c = ''
+
+            else:
+                clean_c = c_str.lstrip('-') if (is_negative and i > 0) else c_str
+                display_c = f'{clean_c}*'
+
+            p_str = term._label()
+
+            if i == 0:
+                prefix = '-' if is_negative and is_unity else ''
+
+                label_parts.append(f'{prefix}{display_c}{p_str}')
+
+            else:
+                sign = ' - ' if is_negative else ' + '
+
+                label_parts.append(f'{sign}{display_c}{p_str}')
+
+        return ''.join(label_parts)
+
     def __rmul__(self, other):
         if isinstance(other, Scalar):
             return self.__scalar_mul(other)
@@ -93,63 +177,7 @@ class HamOp:
         if isinstance(other, HamOp):
             return other * self
 
-    def __str__(self):
-        if not self._data:
-            return '0'
-
-        items = list(self._data.items())
-        label_parts = []
-
-        for i, (term, coeff) in enumerate(items):
-            p_str = str(term)
-            is_negative = False
-            is_unity = False
-
-            if callable(coeff):
-                c_str = str(coeff)
-
-            else:
-                from .._utils import format_number
-
-                c_str = format_number(coeff)
-
-                if not torch.is_tensor(coeff) or coeff.ndim == 0:
-                    val = coeff.item() if torch.is_tensor(coeff) else coeff
-                    if val == 1:
-                        is_unity = True
-
-                    elif val == -1:
-                        is_unity = True
-                        is_negative = True
-
-                    elif val == 0:
-                        continue
-
-                if isinstance(coeff, (int, float)):
-                    is_negative = coeff < 0
-
-                elif isinstance(coeff, complex):
-                    is_negative = coeff.real < 0 and coeff.imag == 0
-
-                elif torch.is_tensor(coeff) and coeff.ndim == 0:
-                    val = coeff.item()
-                    is_negative = val.real < 0 if coeff.is_complex() else val < 0
-
-            if is_unity:
-                display_c = ""
-
-            else:
-                display_c = f"{c_str.lstrip('-') if is_negative and i > 0 else c_str}*"
-
-            if i == 0:
-                prefix = "-" if is_negative and is_unity else ""
-                label_parts.append(f"{prefix}{display_c}{p_str}")
-
-            else:
-                sign = " - " if is_negative else " + "
-                label_parts.append(f"{sign}{display_c}{p_str}")
-
-        return ''.join(label_parts)
+    __str__ = __repr__
 
     def __sub__(self, other):
         return HamOp(self, -other)

@@ -31,6 +31,33 @@ def I() -> PauliString:
 
 @register
 class PauliString:
+    """A multi-qubit Pauli operator.
+
+    Examples
+    --------
+    >>> a = 3 * X()
+    >>> a
+    3*X0
+    >>> a.tensor()
+    tensor([[0.+0.j, 3.+0.j],
+            [3.+0.j, 0.+0.j]], dtype=torch.complex128)
+
+    >>> b = (1, 2) * Y(1)
+    >>> b
+    (1, 2)*Y1
+    >>> b.tensor()
+    tensor([[[0.+0.j, 0.-1.j, 0.+0.j, 0.+0.j],
+             [0.+1.j, 0.+0.j, 0.+0.j, 0.+0.j],
+             [0.+0.j, 0.+0.j, 0.+0.j, 0.-1.j],
+             [0.+0.j, 0.+0.j, 0.+1.j, 0.+0.j]],
+
+            [[0.+0.j, 0.-2.j, 0.+0.j, 0.+0.j],
+             [0.+2.j, 0.+0.j, 0.+0.j, 0.+0.j],
+             [0.+0.j, 0.+0.j, 0.+0.j, 0.-2.j],
+             [0.+0.j, 0.+0.j, 0.+2.j, 0.+0.j]]], dtype=torch.complex128)
+
+    """
+
     _X_MATRIX = torch.tensor([[0, 1], [1, 0]], dtype=torch.complex128)
 
     _Y_MATRIX = torch.tensor([[0, -1j], [1j, 0]], dtype=torch.complex128)
@@ -106,6 +133,23 @@ class PauliString:
     def __pow__(self, n: int) -> PauliString:
         return self.power(n)
 
+    def __repr__(self):
+        op_str = self._label()
+
+        is_unity = False
+
+        if torch.is_tensor(self._coeff):
+            if self._coeff.ndim == 0 and self._coeff == 1:
+                is_unity = True
+
+        elif self._coeff == 1:
+            is_unity = True
+
+        if is_unity:
+            return op_str
+
+        return f'{format_number(self._coeff)}*{op_str}'
+
     def __rmul__(self, other: Scalar | Operator) -> Operator:
         if isinstance(other, Scalar) or is_type(other, 'PauliString'):
             return self * other
@@ -116,37 +160,7 @@ class PauliString:
         if callable(other):
             return HamOp((other, self))
 
-    def __str__(self):
-        label = []
-
-        for i in range(self.n_qubits):
-            x = (self._x_mask >> i) & 1
-            z = (self._z_mask >> i) & 1
-
-            if x and z:
-                label.append(f'Y{i}')
-
-            elif x:
-                label.append(f'X{i}')
-
-            elif z:
-                label.append(f'Z{i}')
-
-            elif get_print_identities():
-                label.append(f'I{i}')
-
-        operator_string = '*'.join(label) if label else 'I'
-
-        if isinstance(self._coeff, Tensor):
-            if torch.all(self._coeff == 1):
-                return operator_string
-
-            return f"{format_number(self._coeff)}*{operator_string}"
-
-        if self._coeff == 1:
-            return operator_string
-
-        return f"{format_number(self._coeff)}*{operator_string}"
+    __str__ = __repr__
 
     def __sub__(self, other: Operator) -> Operator:
         return HamOp(self, -other)
@@ -399,6 +413,29 @@ class PauliString:
                 )
 
         return PauliString(x_mask, z_mask, coeff, len(label))
+
+    def _label(self):
+        """The bare operator string without the coefficient."""
+
+        parts = []
+
+        for i in range(self.n_qubits):
+            x = (self._x_mask >> i) & 1
+            z = (self._z_mask >> i) & 1
+
+            if x and z:
+                parts.append(f'Y{i}')
+
+            elif x:
+                parts.append(f'X{i}')
+
+            elif z:
+                parts.append(f'Z{i}')
+
+            elif get_print_identities():
+                parts.append(f'I{i}')
+
+        return '*'.join(parts) if parts else 'I'
 
     @staticmethod
     def _phase_factor(a: PauliString, b: PauliString) -> complex:
