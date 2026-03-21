@@ -114,7 +114,7 @@ def evolve(H: Operator,
 
             return s4_step(rho, list(omega.terms), 1)
 
-    rho, obsvalues, states = es.solvediffeq(torch.ones(batch_count) * rho0,
+    rho, obsvalues, states = es.solvediffeq(torch.ones(batch_count, dtype=torch.complex128) * rho0,
                                             tlist,
                                             stepper,
                                             observables,
@@ -138,10 +138,20 @@ def two_term_magnus_step(H: HamOp, t: float, h: float) -> HamOp:
 
     knots = t + 0.5*h*(1 + get_knots_3())
 
-    f_nodes = [
-        coeff(knots) if callable(coeff) else coeff * torch.ones_like(knots)
-        for coeff in coeffs
-    ]
+    f_nodes = []
+
+    for coeff in coeffs:
+
+        if callable(coeff):
+            val = coeff(knots)
+
+            if val.ndim == 1:
+                val = val.expand(H.batch_count, 3)
+
+            f_nodes.append(val)
+
+        else:
+            f_nodes.append(coeff.view(-1, 1).expand(H.batch_count, 3))
 
     result = HamOp()
 

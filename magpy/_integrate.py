@@ -1,5 +1,3 @@
-from math import sqrt
-
 import torch
 from torch import Tensor
 
@@ -23,8 +21,11 @@ def antisymmetric_double_integral_from_sample(f_i: float, f_j: float, h: float) 
     # f_i and f_j are samples of the function at knots [t0, t1, t2]
     # \int_t^{t+h} d\tau_1 \int_t^{\tau_1} d\tau_2 \( f_i(\tau_1)f_j(\tau_2) - f_j(\tau_1)f_i(\tau_2) (\)
 
-    quad_sum = 2*(f_i[0]*f_j[1] - f_i[1]*f_j[0]) \
-               + (f_i[0]*f_j[2] - f_i[2]*f_j[0]) \
-               + 2*(f_i[1]*f_j[2] - f_i[2]*f_j[1])
+    fi0, fi1, fi2 = f_i[:, 0], f_i[:, 1], f_i[:, 2]
+    fj0, fj1, fj2 = f_j[:, 0], f_j[:, 1], f_j[:, 2]
 
-    return (sqrt(15) / 108) * h**2 * quad_sum
+    quad_sum = 2 * (fi0 * fj1 - fi1 * fj0) \
+             + (fi0 * fj2 - fi2 * fj0) \
+             + 2 * (fi1 * fj2 - fi2 * fj1)
+
+    return (15**0.5 / 108) * h**2 * quad_sum

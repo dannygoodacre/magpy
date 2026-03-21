@@ -10,6 +10,8 @@ from .._context import _CONTEXT, get_print_identities
 from .._utils import format_number
 
 if TYPE_CHECKING:
+    from typing import Callable
+
     from .. import Operator
 
 
@@ -294,6 +296,29 @@ class PauliString:
 
         return torch.cos(v)*I() - 1j*torch.sin(v)*self.as_unit_operator()
 
+    def _label(self):
+        """The bare operator string without the coefficient."""
+
+        parts = []
+
+        for i in range(self.n_qubits):
+            x = (self._x_mask >> i) & 1
+            z = (self._z_mask >> i) & 1
+
+            if x and z:
+                parts.append(f'Y{i}')
+
+            elif x:
+                parts.append(f'X{i}')
+
+            elif z:
+                parts.append(f'Z{i}')
+
+            elif get_print_identities():
+                parts.append(f'I{i}')
+
+        return '*'.join(parts) if parts else 'I'
+
     @property
     def coeff(self) -> Tensor:
         """The coefficient of the operator."""
@@ -360,6 +385,10 @@ class PauliString:
 
         return active_qubits.bit_count()
 
+    @property
+    def _data(self) -> dict[PauliString, Scalar | Callable]:
+        return {self: 1}
+
     @staticmethod
     def from_label(label: str, coeff: Scalar = 1.0) -> PauliString:
         """Create a PauliString from a string label (e.g., 'XIYZ').
@@ -405,29 +434,6 @@ class PauliString:
                 )
 
         return PauliString(x_mask, z_mask, coeff, len(label))
-
-    def _label(self):
-        """The bare operator string without the coefficient."""
-
-        parts = []
-
-        for i in range(self.n_qubits):
-            x = (self._x_mask >> i) & 1
-            z = (self._z_mask >> i) & 1
-
-            if x and z:
-                parts.append(f'Y{i}')
-
-            elif x:
-                parts.append(f'X{i}')
-
-            elif z:
-                parts.append(f'Z{i}')
-
-            elif get_print_identities():
-                parts.append(f'I{i}')
-
-        return '*'.join(parts) if parts else 'I'
 
     @staticmethod
     def _phase_factor(a: PauliString, b: PauliString) -> complex:

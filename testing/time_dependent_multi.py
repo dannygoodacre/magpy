@@ -1,15 +1,16 @@
 from magpy import X, Y, evolve, timegrid, frob, Z
-from torch import sin, tensor
+from torch import sin, tensor, stack, cos
 import matplotlib.pyplot as plt
 
-H = sin*X() + tensor([1,2])*Y()
+# H = (lambda t: stack((sin(t), cos(t))))*X() + [1, 2]*Y()
+H = sin*X() + [1,2]*Y()
 rho0 = X()
-tlist= timegrid(0, 10, 0.01)
+tlist= timegrid(0, 10, 0.05**6)
 n_qubits = 1
-observables = {'y': lambda u, t: frob(u.matrix(), Y().tensor()),
-               'x': lambda u, t: frob(u.matrix(), X().tensor())}
+observables = {'y': lambda u, t: u.expected(Y()),
+               'x': lambda u, t: u.expected(X())}
 
-_, obsvalue, _ = evolve(H, rho0, tlist, observables=observables)
+_, obsvalue, _ = evolve(H, rho0, tlist, observables)
 
 plt.plot(tlist, obsvalue['x'][0])
 plt.plot(tlist, obsvalue['y'][0])

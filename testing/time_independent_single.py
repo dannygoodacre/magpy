@@ -2,7 +2,7 @@ from magpy import X, Y, evolve, timegrid, frob, Z, set_default_device
 from torch import sin
 import matplotlib.pyplot as plt
 
-set_default_device('cuda:0')
+# set_default_device('cuda:0')
 
 H = X() + Y()
 rho0 = X()
