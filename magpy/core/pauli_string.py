@@ -6,7 +6,7 @@ from torch import Tensor
 from .hamiltonian_operator import HamOp
 from .._registry import register, is_type
 from ..types import Scalar
-from .._context import get_print_identities
+from .._context import _CONTEXT, get_print_identities
 from .._utils import format_number
 
 if TYPE_CHECKING:
@@ -55,16 +55,8 @@ class PauliString:
              [0.+2.j, 0.+0.j, 0.+0.j, 0.+0.j],
              [0.+0.j, 0.+0.j, 0.+0.j, 0.-2.j],
              [0.+0.j, 0.+0.j, 0.+2.j, 0.+0.j]]], dtype=torch.complex128)
-
     """
 
-    _X_MATRIX = torch.tensor([[0, 1], [1, 0]], dtype=torch.complex128)
-
-    _Y_MATRIX = torch.tensor([[0, -1j], [1j, 0]], dtype=torch.complex128)
-
-    _Z_MATRIX = torch.tensor([[1, 0], [0, -1]], dtype=torch.complex128)
-
-    _I_MATRIX = torch.eye(2, dtype=torch.complex128)
 
     def __init__(self, x_mask: int, z_mask: int, coeff: complex | Tensor = 1.0):
         from .._utils import tensorize
@@ -257,7 +249,7 @@ class PauliString:
         if n_qubits is None:
             n_qubits = self.n_qubits
 
-        result = torch.tensor([[1.0]], dtype=torch.complex128)
+        result = torch.tensor([[1.0]], dtype=torch.complex128).to(_CONTEXT.device)
 
         for i in range(n_qubits):
             xi = (self._x_mask >> i) & 1
@@ -267,13 +259,13 @@ class PauliString:
                 m = torch.eye(2, dtype=torch.complex128)
 
             elif xi == 1 and zi == 0:
-                m = torch.tensor([[0., 1.], [1., 0.]], dtype=torch.complex128)
+                m = torch.tensor([[0., 1.], [1., 0.]], dtype=torch.complex128).to(_CONTEXT.device)
 
             elif xi == 0 and zi == 1:
-                m = torch.tensor([[1., 0.], [0., -1.]], dtype=torch.complex128)
+                m = torch.tensor([[1., 0.], [0., -1.]], dtype=torch.complex128).to(_CONTEXT.device)
 
             else:
-                m = torch.tensor([[0., -1j], [1j, 0.]], dtype=torch.complex128)
+                m = torch.tensor([[0., -1j], [1j, 0.]], dtype=torch.complex128).to(_CONTEXT.device)
 
             result = torch.kron(result, m)
 

@@ -15,13 +15,13 @@ References
 from typing import TYPE_CHECKING
 
 
-
 if TYPE_CHECKING:
     from typing import Callable
 
     from torch import Tensor
 
     from . import Operator
+
 
 def s2_step(rho: Operator, terms: list[tuple[Operator, Callable | Tensor]] , scale: float | Tensor):
     """Perform a second-order symmetric Strang split step (S2).

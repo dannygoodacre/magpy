@@ -22,7 +22,7 @@ import torch
 
 from ._context import get_device
 from .core import PauliString, HamOp
-from ._glq import _KNOTS_3, _WEIGHTS_3
+from ._glq import get_knots_3, get_weights_3
 from ._integrate import integral_from_sample, antisymmetric_double_integral_from_sample
 from .linalg import commutes
 from ._splitting import s4_step
@@ -31,13 +31,6 @@ if TYPE_CHECKING:
     from . import Operator
     from torch import Tensor
     from .core import PauliString
-
-
-def _update_device():
-    global _KNOTS, _WEIGHTS
-
-    _KNOTS = _KNOTS.to(get_device())
-    _WEIGHTS = _WEIGHTS.to(get_device())
 
 
 def evolve(H: Operator,
@@ -101,7 +94,7 @@ def evolve(H: Operator,
 
     elif H.is_disjoint:
         def stepper(t, h, rho):
-            knots = t + 0.5*h*(1 + _KNOTS_3)
+            knots = t + 0.5*h*(1 + get_knots_3())
 
             propagators = [
                 first_term_pauli(unit_pauli, coeff(knots), h).propagator(h)
@@ -134,7 +127,7 @@ def evolve(H: Operator,
 
 
 def first_term_pauli(pauli_unit: PauliString, coeff, h):
-    return 0.5 * h * torch.sum(_WEIGHTS_3 * coeff) * pauli_unit
+    return 0.5 * h * torch.sum(get_weights_3() * coeff) * pauli_unit
 
 
 def two_term_magnus_step(H: HamOp, t: float, h: float) -> HamOp:
@@ -143,7 +136,7 @@ def two_term_magnus_step(H: HamOp, t: float, h: float) -> HamOp:
 
     n = len(pauli_strings)
 
-    knots = t + 0.5*h*(1 + _KNOTS_3)
+    knots = t + 0.5*h*(1 + get_knots_3())
 
     f_nodes = [
         coeff(knots) if callable(coeff) else coeff * torch.ones_like(knots)
